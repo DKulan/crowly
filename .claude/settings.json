@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/dknight/Documents/personal/crowly/.claude/hooks/crowly.sh",
+            "timeout": 10,
+            "statusMessage": "Checking docs are in sync with code changes"
+          }
+        ]
+      }
+    ]
+  }
+}
