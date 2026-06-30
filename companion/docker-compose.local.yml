@@ -1,0 +1,42 @@
+# Crowly companion — deployment variant for a fronting tunnel (Tailscale
+# Funnel / Cloudflare Tunnel) that terminates/handles TLS itself.
+#
+# Neither bundled Caddy nor an existing Traefik is involved here: the tunnel
+# provides the public HTTPS hostname and forwards plain HTTP to the companion
+# on a loopback port. So this variant publishes 127.0.0.1:8787 ONLY — never
+# the open internet — and the tunnel is pointed at that port.
+#
+# Tailscale Funnel example (TLS terminates on THIS node — Tailscale never sees
+# digest plaintext, so "content stays on your server" holds):
+#   docker compose -f docker-compose.local.yml up -d --build
+#   sudo tailscale funnel --bg 8787
+#   # → prints https://<node>.<tailnet>.ts.net  → that's CROWLY_PUBLIC_URL
+#
+# Set CROWLY_PUBLIC_URL in .env to the tunnel's public URL so the pairing
+# payload advertises the address the app should dial.
+
+services:
+  companion:
+    build:
+      context: ..
+      dockerfile: companion/Dockerfile
+    image: crowly-companion:latest
+    container_name: crowly-companion
+    restart: unless-stopped
+    # Loopback only: the tunnel (running on the host) reaches 127.0.0.1:8787;
+    # nothing is exposed to the public internet directly.
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      CROWLY_PAIRING_TOKEN: ${CROWLY_PAIRING_TOKEN:?CROWLY_PAIRING_TOKEN must be set in .env}
+      CROWLY_DB_PATH: /opt/data/crowly.db
+      CROWLY_HOST: 0.0.0.0
+      CROWLY_PORT: 8787
+      # The public URL the app dials — the tunnel's hostname. REQUIRED here
+      # (there's no domain to derive it from). e.g. https://vps.tailXXXX.ts.net
+      CROWLY_PUBLIC_URL: ${CROWLY_PUBLIC_URL:?set CROWLY_PUBLIC_URL to the tunnel public URL}
+    volumes:
+      - crowly-data:/opt/data
+
+volumes:
+  crowly-data:
