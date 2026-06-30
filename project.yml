@@ -14,12 +14,17 @@ settings:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    DEVELOPMENT_TEAM: ""
-    # Simulator-only baseline: build without signing. When the shared App Group
-    # container is first exercised (widget reads app-written data), switch to
-    # ad-hoc signing (CODE_SIGN_IDENTITY: "-") and wire the .entitlements files
-    # that already live in App/ and Widget/.
-    CODE_SIGNING_ALLOWED: "NO"
+    # Device build (TestFlight): automatic signing with the personal Apple
+    # Developer team. Set here in project.yml — NOT in Xcode's GUI — because
+    # `xcodegen generate` regenerates the .xcodeproj and would wipe GUI-only
+    # signing settings. Xcode resolves the actual provisioning profile from
+    # this team + the bundle ids automatically.
+    DEVELOPMENT_TEAM: "54BYZM6677"
+    CODE_SIGN_STYLE: Automatic
+    # Simulator-only builds still work (signing is skipped for the simulator
+    # destination); this just additionally enables real signing for a device /
+    # archive build. To go back to the pure simulator-unsigned baseline, set
+    # CODE_SIGNING_ALLOWED: "NO".
 
 targets:
   Crowly:
