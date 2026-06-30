@@ -13,10 +13,12 @@ Part design docs, part code. The **iOS app** (M1 demo mode) is a real Swift/Swif
 - `docs/concept.md` — positioning (reader-only), users, competition, risks.
 - `docs/schema.md` — the digest contract and its versioning policy. **The contract is the product.**
 - `docs/architecture.md` — the four artifacts; companion ingest/serve, TLS, pairing, urgency-gated push, privacy.
+- `docs/emitter.md` — the `POST /ingest` wire contract + emitter kit (helper + Hermes skill); implementation in `emitter/` (Python stdlib helper, test companion stub).
 - `docs/ux.md` — the M1 iOS interaction spec (inbox: read + archive; digest detail: header → bottom line → summary → sections → sources; the read-only widget).
 - `docs/design-system.md` — tokens, components with SwiftUI sketches, FNV-1a job-color algo.
 - `docs/validation.md` — the M1 two-week personal test and reader-shape kill criteria.
 - `docs/roadmap.md` — M1 (single-user) → M2 (public-ready) build order.
+- `docs/onboarding.md` — single-user install runbook (app + companion + emitter + push) with per-step ✅/🔨/👤 status; doubles as the team's debug checklist.
 - `docs/naming.md` — why "Crowly"; App Store name not yet claimed in App Store Connect.
 
 **Code (iOS app):** `project.yml` is the source of truth — **XcodeGen** generates `Crowly.xcodeproj` (gitignored; run `xcodegen generate` after adding/moving files). Targets: `Crowly` (app; sources `App/` + `Shared/`), `CrowlyWidgetExtension` (`Widget/` + `Shared/`), `CrowlyTests` (Swift Testing). Deployment target **iOS 26** (Liquid Glass used freely; simulator-only, unsigned). `Shared/` is compiled into both app and widget. M1 is **demo mode** — fully client-side from `Shared/Demo/` fixtures, no companion/relay/App Group/signing.

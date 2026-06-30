@@ -8,8 +8,12 @@
 # Local state / data stores
 *.sqlite
 *.sqlite3
+*.db
+*.db-wal
+*.db-shm
 state/
 data/
+.local/
 
 # OS / editor
 .DS_Store
@@ -23,3 +27,7 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 .swiftpm/
+
+# Python
+__pycache__/
+*.pyc
