@@ -33,6 +33,12 @@ enum KeychainError: Error, Equatable {
 enum KeychainKey: String {
     case companionURL    = "companion_url"
     case pairingToken    = "pairing_token"
+    /// The opaque token the relay minted for this device on `/register`. The
+    /// user hands this to their companion (`CROWLY_ROUTING_TOKEN`) so it can
+    /// drive push. Stored here so it survives launches and a re-pair can reuse
+    /// it. Not a secret on the level of the pairing token, but device-scoped,
+    /// so it lives in the keychain alongside the rest.
+    case routingToken    = "routing_token"
 }
 
 /// Lightweight protocol so `DigestStore` and `CompanionClient` can be tested
@@ -120,7 +126,7 @@ final class KeychainStore: CredentialStore {
     }
 
     func clearAll() throws {
-        for key in [KeychainKey.companionURL, .pairingToken] {
+        for key in [KeychainKey.companionURL, .pairingToken, .routingToken] {
             try delete(key)
         }
     }

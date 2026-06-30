@@ -437,3 +437,120 @@ private func makeMockedClient(credentials: InMemoryCredentialStore) -> Companion
     #expect(envelopes.first?.digest.id == "live_1")
     #expect(envelopes.first?.state == .read)
 }
+
+// MARK: - RelayClient (push registration)
+
+private func makeMockedRelay() -> RelayClient {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [MockURLProtocol.self]
+    let session = URLSession(configuration: config)
+    // Inject an explicit base URL so the test doesn't depend on the Info.plist
+    // CrowlyRelayURL (which is empty by default).
+    return RelayClient(baseURL: URL(string: "https://relay.example.com")!, session: session)!
+}
+
+@Test func relayRegisterPostsDeviceTokenAndReturnsRoutingToken() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.nextResponse = (200, """
+        {"routing_token": "rt_abc123"}
+        """.data(using: .utf8)!)
+
+    let relay = makeMockedRelay()
+    let rt = try await relay.register(deviceToken: "deadbeef")
+    #expect(rt == "rt_abc123")
+
+    let req = MockURLProtocol.lastRequest
+    #expect(req?.httpMethod == "POST")
+    #expect(req?.url?.path == "/register")
+    #expect(req?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    // The relay is unauthenticated for /register; no bearer is sent.
+    #expect(req?.value(forHTTPHeaderField: "Authorization") == nil)
+
+    let body = try #require(MockURLProtocol.lastBody)
+    let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+    #expect(json?["device_token"] as? String == "deadbeef")
+}
+
+@Test func relayRegisterForwardsExistingRoutingToken() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.nextResponse = (200, #"{"routing_token": "rt_kept"}"#.data(using: .utf8)!)
+
+    let relay = makeMockedRelay()
+    _ = try await relay.register(deviceToken: "feedface", existingRoutingToken: "rt_kept")
+
+    let body = try #require(MockURLProtocol.lastBody)
+    let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+    // Re-binding a refreshed device token must carry the prior routing_token
+    // so the companion's CROWLY_ROUTING_TOKEN stays valid.
+    #expect(json?["routing_token"] as? String == "rt_kept")
+}
+
+@Test func relayUnregisterPostsRoutingToken() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.nextResponse = (200, "{}".data(using: .utf8)!)
+
+    let relay = makeMockedRelay()
+    try await relay.unregister(routingToken: "rt_gone")
+
+    let req = MockURLProtocol.lastRequest
+    #expect(req?.url?.path == "/unregister")
+    let body = try #require(MockURLProtocol.lastBody)
+    let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+    #expect(json?["routing_token"] as? String == "rt_gone")
+}
+
+@Test func relayServerErrorSurfacesTyped() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.nextResponse = (503, #"{"error":"down"}"#.data(using: .utf8)!)
+    let relay = makeMockedRelay()
+    await #expect(throws: RelayError.serverError(code: 503)) {
+        _ = try await relay.register(deviceToken: "x")
+    }
+}
+
+@Test func relayClientNilWhenNoURLConfigured() {
+    // The default initializer reads RelayConfig.url (Info.plist), which is
+    // empty in test/demo builds — so RelayClient() is nil and push registration
+    // is a clean no-op.
+    #expect(RelayClient(baseURL: nil) == nil)
+}
+
+@Test func apnsHexEncodingIsLowercaseHex() {
+    let data = Data([0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x0F])
+    #expect(data.apnsHexString == "deadbeef000f")
+}
+
+// MARK: - PushRegistrar (post-pairing, best-effort)
+
+@Test @MainActor func pushRegistrarStoresRoutingTokenFromRelay() async {
+    let creds = InMemoryCredentialStore()
+    let registrar = PushRegistrar(
+        credentials: creds,
+        makeRelay: { makeMockedRelay() }
+    )
+    MockURLProtocol.reset()
+    MockURLProtocol.nextResponse = (200, #"{"routing_token":"rt_stored"}"#.data(using: .utf8)!)
+
+    await registrar.handleDeviceToken(Data([0x01, 0x02, 0x03]))
+    #expect(creds.get(.routingToken) == "rt_stored")
+    #expect(registrar.routingTokenForDisplay == "rt_stored")
+}
+
+@Test @MainActor func pushRegistrarNoOpsWhenRelayUnconfigured() async {
+    let creds = InMemoryCredentialStore()
+    // makeRelay returns nil → no network, no token stored, no crash.
+    let registrar = PushRegistrar(credentials: creds, makeRelay: { nil })
+    await registrar.handleDeviceToken(Data([0xAA]))
+    #expect(creds.get(.routingToken) == nil)
+}
+
+@Test @MainActor func pushRegistrarSurvivesRelayFailure() async {
+    let creds = InMemoryCredentialStore()
+    let registrar = PushRegistrar(credentials: creds, makeRelay: { makeMockedRelay() })
+    MockURLProtocol.reset()
+    MockURLProtocol.nextResponse = (500, #"{"error":"boom"}"#.data(using: .utf8)!)
+    // Best-effort: a relay failure must not throw out of handleDeviceToken and
+    // must leave no partial token behind.
+    await registrar.handleDeviceToken(Data([0x01]))
+    #expect(creds.get(.routingToken) == nil)
+}
