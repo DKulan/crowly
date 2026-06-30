@@ -48,6 +48,13 @@ services:
       # only uses it to build the pairing payload; nothing internal depends
       # on it being reachable.
       CROWLY_PUBLIC_URL: ${CROWLY_PUBLIC_URL:-https://${CROWLY_DOMAIN}}
+      # Push relay (optional). Leave any of these unset to disable push;
+      # the companion logs `push disabled (missing: ...)` at boot and the
+      # inbox stays pull-only. All three must be set to enable. The companion
+      # is best-effort about push (a relay outage doesn't fail ingest).
+      CROWLY_RELAY_URL: ${CROWLY_RELAY_URL:-}
+      CROWLY_RELAY_TOKEN: ${CROWLY_RELAY_TOKEN:-}
+      CROWLY_ROUTING_TOKEN: ${CROWLY_ROUTING_TOKEN:-}
     volumes:
       # Named volume so the SQLite DB and its -wal/-shm sidecars survive
       # `docker compose down`. NOT a bind-mount: the user's VPS doesn't need

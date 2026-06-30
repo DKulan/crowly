@@ -64,6 +64,7 @@ except ImportError as _e:  # pragma: no cover - bootstrap only
     )
 
 from companion.store import Store, VALID_STATES
+from companion.push import PushConfig, fire_push
 
 
 # Schema versions the app's decoder supports. M1 is v1 only. When the
@@ -139,6 +140,7 @@ class _FastServer(ThreadingHTTPServer):
     # The handler reads these off `self.server`. Set by main() at startup.
     config: Config
     store: Store
+    push_config: PushConfig
 
     def server_bind(self):
         import socketserver
@@ -167,6 +169,10 @@ class Handler(BaseHTTPRequestHandler):
     @property
     def store(self) -> Store:
         return self.server.store  # type: ignore[attr-defined]
+
+    @property
+    def push_config(self) -> PushConfig:
+        return self.server.push_config  # type: ignore[attr-defined]
 
     def _send_json(self, code: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -336,6 +342,20 @@ class Handler(BaseHTTPRequestHandler):
             flush=True,
         )
 
+        # Urgency-gated push (companion/push.py). Runs ONLY on first-store of
+        # a new digest — a re-POST that just updates fields doesn't refire a
+        # push. (The push is "new digest arrived"; an emitter editing the
+        # body of an already-delivered digest is not a new event.) Push is
+        # strictly best-effort: fire_push never raises, and even a failure
+        # reason from the relay does not affect the ingest's 200/201 reply.
+        if not was_update:
+            push_status = fire_push(self.push_config, stored)
+            print(
+                f"[companion] push {push_status} "
+                f"(urgency={stored.get('urgency')}, id={stored['id']})",
+                flush=True,
+            )
+
         self._send_json(
             200 if was_update else 201,
             {"status": "updated" if was_update else "stored", "id": stored["id"]},
@@ -412,9 +432,11 @@ def run(config: Config) -> int:
         config.public_url = f"http://{config.host}:{config.port}"
 
     store = Store(config.db_path)
+    push_config = PushConfig.from_env()
     server = _FastServer((config.host, config.port), Handler)
     server.config = config
     server.store = store
+    server.push_config = push_config
 
     _print_pairing_banner(config)
     print(
@@ -422,6 +444,10 @@ def run(config: Config) -> int:
         f"(db={config.db_path}, public_url={config.public_url})",
         flush=True,
     )
+    # One-line, secret-free announcement of push posture. The companion runs
+    # fine without push (single-user dev mode); this line is how the operator
+    # confirms the gate is on/off intentionally and not by accident.
+    print(f"[companion] {push_config.describe()}", flush=True)
 
     try:
         server.serve_forever()
