@@ -44,6 +44,7 @@ The data-owning core. Self-hosted, typically a Docker bundle alongside Hermes.
 - A public iOS app must use **HTTPS with a publicly-trusted cert** (App Transport Security). Plain `http://<ip>` is blocked, and ATS exceptions draw review scrutiny — so the app ships **no ATS exceptions**.
 - The companion therefore **requires valid TLS and fails loud at startup without it** — it will not silently serve cleartext the app can't reach.
 - **Default:** bundled auto-HTTPS (Caddy + Let's Encrypt). User points a hostname at their VPS, sets one env var, `docker compose up`; certs auto-renew.
+- **Existing reverse proxy:** if the host already runs a proxy that owns :80/:443 (Traefik, nginx-proxy, etc. — common when other self-hosted services live on the box), the bundled Caddy would collide on those ports. Use `companion/docker-compose.traefik.yml` instead: it drops Caddy and exposes the companion to the existing proxy by label/host, so one proxy terminates TLS for everything. (Match the proxy's entrypoint/cert-resolver names to your existing services.)
 - **Escape hatch (no domain/DNS):** a tunnel (Cloudflare Tunnel / Tailscale Funnel) provides a public hostname with valid TLS; the companion stays private. Trade-off: a third party sits in front of the user's traffic.
 
 ## Pairing & trust

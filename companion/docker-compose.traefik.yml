@@ -1,0 +1,54 @@
+# Crowly companion — deployment variant for hosts that ALREADY run Traefik.
+#
+# The default `docker-compose.yml` bundles Caddy and binds :80/:443 — correct
+# for a fresh VPS with no existing proxy. But many self-hosters already run a
+# reverse proxy (Traefik, nginx-proxy, etc.) that owns :80/:443. Running the
+# bundled Caddy alongside it fails with "address already in use".
+#
+# This variant drops Caddy entirely and lets an existing **Traefik** terminate
+# TLS and route to the companion by Docker labels — the same mechanism the
+# operator's other services already use. The companion serves plain HTTP on
+# 8787 on its own bridge network; Traefik (commonly run in `network_mode:
+# host`) reaches that container IP directly, exactly as it reaches every other
+# labelled service.
+#
+# Usage:
+#   docker compose -f docker-compose.traefik.yml up -d
+#
+# Assumes the operator's Traefik already defines:
+#   - a `websecure` entrypoint (443)
+#   - a cert resolver named `letsencrypt`
+# (Adjust the two label values below if yours are named differently — match
+# what your existing routed services use: `docker inspect <svc> | grep traefik`.)
+#
+# DNS: the A record for ${CROWLY_DOMAIN} must point at this host before first
+# start, so Traefik's ACME challenge can issue the cert.
+
+services:
+  companion:
+    build:
+      context: ..
+      dockerfile: companion/Dockerfile
+    image: crowly-companion:latest
+    container_name: crowly-companion
+    restart: unless-stopped
+    # No published ports — Traefik reaches the container on the bridge network.
+    expose:
+      - "8787"
+    environment:
+      CROWLY_PAIRING_TOKEN: ${CROWLY_PAIRING_TOKEN:?CROWLY_PAIRING_TOKEN must be set in .env}
+      CROWLY_DB_PATH: /opt/data/crowly.db
+      CROWLY_HOST: 0.0.0.0
+      CROWLY_PORT: 8787
+      CROWLY_PUBLIC_URL: ${CROWLY_PUBLIC_URL:-https://${CROWLY_DOMAIN}}
+    volumes:
+      - crowly-data:/opt/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.crowly.entrypoints=websecure"
+      - "traefik.http.routers.crowly.rule=Host(`${CROWLY_DOMAIN}`)"
+      - "traefik.http.routers.crowly.tls.certresolver=letsencrypt"
+      - "traefik.http.services.crowly.loadbalancer.server.port=8787"
+
+volumes:
+  crowly-data:
