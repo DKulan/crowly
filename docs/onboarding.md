@@ -47,47 +47,47 @@ Or use the `run-crowly` skill, which already wraps build + launch.
 
 ---
 
-## Step 2 — Stand up the companion 🔨
+## Step 2 — Stand up the companion ✅ built / 👤 deploy
 
-> **Today: only `emitter/companion_stub.py` exists** — an in-memory, no-TLS test stub used to exercise the wire contract on a dev box (`docs/emitter.md` § Quickstart). The production companion is the **#1 thing to build** for M1 (`docs/roadmap.md` § M1 step 1).
+> **Today: the production companion is built** — `companion/` is the real validating ingest + SQLite store + serve service, with `docker-compose.yml`, `Dockerfile`, and a `Caddyfile` for auto-HTTPS. End-to-end tested by `python3 companion/test_end_to_end.py` (all passed: ingest/list/summary wrapper shape, state mirroring, schema-version passthrough, restart persistence, error shapes). The deploy itself is operator-👤.
 
-The shape, once built:
+The shape:
 
 1. Generate a `PAIRING_TOKEN` (any 32+ char random string).
-2. Write `/opt/data/.env` on the VPS:
+2. Write `companion/.env` on the VPS (see `companion/.env.example`):
    ```
    COMPANION_HOSTNAME=inbox.example.com
    PAIRING_TOKEN=<the random string>
    ```
    Secrets live here, plaintext-but-gitignored, **never in any vault or this repo** (`docs/architecture.md` § Security).
-3. `docker compose up -d` — Caddy auto-issues the TLS cert on first request; the companion serves `/ingest`, `/list`, `/summary`.
+3. `docker compose up -d` from `companion/`. Caddy auto-issues the TLS cert on first request; the companion serves `/ingest`, `/list`, `/summary`, `/state`, `/health`, `/pair`.
 
 *Verify:* `curl https://<hostname>/health` returns `ok` over valid HTTPS (no `-k`).
 
 *Common failures:*
 - **Cert didn't issue** — DNS not pointed at the VPS, or port 80 blocked (Let's Encrypt HTTP-01 challenge).
 - **Companion exits at startup** — by design it **fails loud without valid TLS** (`docs/architecture.md` § Networking); it will not silently serve cleartext the app can't reach. Check Caddy logs for the ACME error.
-- **`401` on every request** — `PAIRING_TOKEN` mismatch between `/opt/data/.env` and what the client is sending.
+- **`401` on every request** — `PAIRING_TOKEN` mismatch between `companion/.env` and what the client is sending.
 
 ---
 
-## Step 3 — Pair the phone 👤+🔨
+## Step 3 — Pair the phone ✅ manual / 🔨 QR
 
-The companion (on deploy) exposes a QR encoding `{companion_url, pairing_token}` (`docs/architecture.md` § Pairing). The app's `PairCompanionView` (`docs/ux.md` § First-run) scans it, hits the companion over HTTPS to validate, stores both in the **Keychain**, then hands the companion its **`routing_token`** (never the raw APNs device token).
+The companion exposes `GET /pair`, which returns `{companion_url, pairing_token}` (`docs/architecture.md` § Pairing). The verified M1 path is **manual URL+token entry**: the app's `PairCompanionView` ("Enter URL and token instead") writes both into a throwaway slot, calls `/health` and `/list` to prove the combo really is a Crowly companion with this token, and only then persists them to the **Keychain** and swaps `DigestStore` from demo to live (`App/Views/PairCompanionView.swift`, `App/Net/CompanionClient.swift`, `App/Net/KeychainStore.swift`).
 
-> **Today: the app has no networking, no pairing flow, no Keychain wiring yet** — only the demo-mode reader (`docs/roadmap.md` § M1 step 3).
+> **Today: manual entry is wired end-to-end and validate-before-persist works.** QR scan is stubbed — the entry point in `PairCompanionView` is reserved (`showQRScanner`) but `AVFoundation` integration is M2 (`docs/roadmap.md` § M2). The routing-token handoff to the companion is also manual for M1: see Step 5.
 
-*Verify:* app leaves Demo Mode; pull-to-refresh shows an **empty real inbox** ("No digests yet. Send your first one from Hermes." per `docs/ux.md`); manual fallback "Enter URL and token instead" succeeds with the same values.
+*Verify:* app leaves Demo Mode after pairing; pull-to-refresh shows an **empty real inbox** ("No digests yet. Send your first one from Hermes." per `docs/ux.md`); the inline error path surfaces typed errors (unreachable / unauthorized / decode) without crashing back to demo.
 
 *Common failures:*
 - **Clock skew** — pairing token rejected if the phone or VPS clock is far off. Sync NTP on the VPS.
-- **Relay unreachable** — should degrade gracefully: pairing **must complete** even if the relay is down (push is best-effort, never critical-path; `docs/architecture.md` § Push). If pairing blocks on relay reachability, that's a bug.
-- **`401`** — pairing token wasn't actually copied into the QR / typed correctly.
+- **`401`** — pairing token wasn't actually typed correctly (no QR yet).
 - **Cert untrusted** — the companion's cert chain is invalid; the iPhone won't connect. Re-check Step 2's verify.
+- **Unreachable URL** — the app refuses `http://` (ATS); URL must be `https://` with valid TLS.
 
 ---
 
-## Step 4 — Wire the emitter into Hermes ✅ helper / 🔨 skill-install
+## Step 4 — Wire the emitter into Hermes ✅ helper + real companion / 🔨 Hermes-skill install
 
 The emitter kit is in `emitter/` and the wire contract is in `docs/emitter.md`. The helper builds the envelope (`schema_version`, `id`, `created_at`), validates required fields, and POSTs to `{companion_url}/ingest` with `Authorization: Bearer <pairing_token>`.
 
@@ -104,36 +104,52 @@ A Hermes cron pipes its content JSON to the helper:
 hermes-run morning-briefing | python3 /opt/crowly/crowly_emit.py
 ```
 
-*Verify:* helper exits `0`; the digest appears in the app's inbox on pull-to-refresh and in the widget's "latest" row (once Steps 2–3 exist).
+*Verify:* helper exits `0`; the digest appears in the app's inbox on pull-to-refresh and in the widget's "latest" row.
 
 *Common failures:*
 - **Exit `2` (validation error)** — required field missing or `urgency` not in `low|normal|high|urgent`. The error names the field; fix the LLM prompt, not the helper.
 - **Exit `3` (transport error)** — wrong URL, cert untrusted, or `401`. Same diagnosis as Step 2/3.
-- **Hermes-skill install** — the `emitter/hermes-skill/` wrapper is built but the skill-registry install step into a real Hermes deployment is still 🔨 (recipe lives in `emitter/hermes-skill/`).
 
-> **Today: helper is built and verified against `companion_stub.py`** (`docs/emitter.md` § Quickstart). It has **not** been exercised against a real companion, because no real companion exists yet — Step 2 unblocks that.
+> **Today: helper is verified against the real companion** — the end-to-end test in `companion/test_end_to_end.py` exercises ingest → list → summary → state through the same wire contract the helper writes. The only remaining gap is the **Hermes-skill registry install** itself: `emitter/hermes-skill/` contains a pinned-skill wrapper, but actually installing it into a live Hermes deployment is still manual/unverified (🔨). Per the security note above, that install must remain a pinned, reviewable skill — never a live-URL fetch.
 
 ---
 
-## Step 5 — Push (optional for the test) 🔨+👤
+## Step 5 — Push ✅ built (MockAPNs) / 👤 real APNs + device
 
 Push is **best-effort, never critical-path** (`docs/architecture.md` § Push). The two-week test (`docs/validation.md`) can run on pull + widget alone; push only makes high-urgency digests feel instant.
 
-The shape, once built:
+The shape (built end-to-end against MockAPNs):
 
 1. Emit a digest with `"urgency": "high"` (or `"urgent"`).
-2. Companion sees the urgency tier crosses the gate, pings the relay with `{routing_token, "Harmony: new digest →"}` — **no digest content** (`docs/architecture.md` § Push).
-3. Relay looks up `routing_token → device_token`, sends the APNs push.
+2. Companion's `push.py` sees the urgency tier crosses the gate (`PUSH_URGENCIES = ("high", "urgent")`), pings the relay with `{routing_token, "<job_id>: new digest"}` — **no digest content**.
+3. Relay looks up `routing_token → device_token`, sends the APNs push (mock or real).
 4. Phone shows a thin pointer notification; the widget timeline reloads.
 
-*Verify:* `urgency: high` digest produces a banner on the lock screen with the title only (no body); `urgency: normal` produces **no push** and waits to be pulled. The widget updates within ~15 min even with the relay offline (the timeline reload floor, `docs/architecture.md` § Push).
+*Verify (MockAPNs, today):* `python3 relay/test_relay.py` exercises register → push → APNs-mock-recorded → unregister, plus the schema-introspection test that pins "the store literally cannot hold digest content" (routes table has exactly 3 columns: `routing_token`, `device_token`, `created_at`). `python3 companion/test_push_gate.py` pins the urgency gate and "best-effort never fails ingest" rule.
+
+*Verify (real APNs, 👤):* needs the user's paid Apple Developer account + a physical device. The full runbook lives in **`relay/README.md`** ("Plugging in your real Apple credentials" + the sanity-check checklist) — don't duplicate it here.
 
 *Common failures:*
 - **No paid Apple Developer account** — free provisioning can't enable push and expires weekly. Pull-only is a valid M1 configuration.
-- **Push fires for `normal`/`low`** — gate bug; only `high`/`urgent` should cross.
+- **Push fires for `normal`/`low`** — gate bug; only `high`/`urgent` should cross. Pinned by `test_push_gate.py`.
 - **Push carries digest body** — privacy bug; pointer must be content-free.
+- **Companion logs `push disabled (missing: ...)`** — one of `CROWLY_RELAY_URL`/`CROWLY_RELAY_TOKEN`/`CROWLY_ROUTING_TOKEN` isn't set. See Step 5a.
 
-> **Today: relay doesn't exist** (`docs/roadmap.md` § M1 step 4). The relay is project-operated and the one piece that can't be self-hosted, because APNs is bound to the app's Apple Team + bundle id.
+### Step 5a — Manual `routing_token` paste 👤 (M1)
+
+The architecture says "the app hands the companion its routing_token during pairing." For M1 that handoff is **manual** — the storage IS the env var. The flow:
+
+1. After pairing (Step 3), the app prompts for notification authorization and calls `UIApplication.shared.registerForRemoteNotifications()` (`App/Net/PushRegistrar.swift`). This only happens once paired — demo-mode users never see the prompt.
+2. APNs returns the device token; the app POSTs it to the relay's `/register`, which mints a `routing_token` and stores it in the Keychain (`routingTokenForDisplay`).
+3. The user reads that `routing_token` (Settings → "Push routing token", once that surface is wired) and pastes it into the companion's `companion/.env`:
+   ```
+   CROWLY_RELAY_URL=https://relay.crowly.example
+   CROWLY_RELAY_TOKEN=<the relay's RELAY_PUSH_TOKEN>
+   CROWLY_ROUTING_TOKEN=<the value the app showed>
+   ```
+4. `docker compose up -d` on the companion. The boot banner now logs `push enabled → <relay-url>`; high/urgent digests will fire.
+
+An automated app→companion handoff (`POST /pair` from the app, writing the routing_token straight into the companion's store) is **deferred to M2** — there's nothing to call it from in the M1 single-user flow, and the env var is a clean migration target. The companion-side rationale is captured in `companion/push.py`'s module docstring.
 
 ---
 
@@ -153,14 +169,14 @@ This is what the two-week test measures (`docs/validation.md`):
 
 ## What's real today
 
-| Step | Status | Blocking work |
+| Step | Status | Remaining work |
 |---|---|---|
 | 0. Prerequisites | 👤 | — |
 | 1. Install the app | ✅ mechanism / 🔨 distribution | TestFlight + App Store (M2) |
-| 2. Stand up the companion | 🔨 | **#1 M1 build:** validating ingest + store + serve + Caddy bundle |
-| 3. Pair the phone | 🔨 | Companion (Step 2) + app networking/Keychain/QR (M1 step 3) |
-| 4. Wire the emitter | ✅ helper, against the stub / 🔨 against a real companion / 🔨 skill-install | Step 2; Hermes-skill registry install |
-| 5. Push | 🔨 + 👤 | Relay (M1 step 4) + Apple Developer account |
-| 6. Steady state | ✅ as a *reading experience* on demo digests | All of the above for the real loop |
+| 2. Stand up the companion | ✅ built / 👤 deploy | Operator `docker compose up` on their VPS; Caddy auto-issues TLS from their hostname (no Apple account needed) |
+| 3. Pair the phone | ✅ manual entry / 🔨 QR scan | QR scan (M2); routing_token handoff is manual for M1 (Step 5a) |
+| 4. Wire the emitter | ✅ helper against real companion / 🔨 Hermes-skill registry install | Pinned-skill install into a live Hermes deployment |
+| 5. Push | ✅ built end-to-end vs MockAPNs / 👤 real APNs + device | Apple Developer account, `.p8` key, physical device (`relay/README.md`) |
+| 6. Steady state | ✅ as a *reading experience* on demo digests; live loop runs once Steps 2–4 are deployed | The two-week behavioral test itself (`docs/validation.md`) |
 
-The gap at a glance: the reader (Steps 1, 6) and the input side (Step 4) work today against fixtures and a stub. The **companion + pairing + relay** (Steps 2, 3, 5) is the real M1 build queue.
+The gap at a glance: **the software is built.** What remains is operator deployment (Step 2 onto the user's VPS), the manual routing_token paste (Step 5a), Apple-Developer-account + device verification for real APNs (Step 5), the Hermes-skill registry install (Step 4), and the M1 behavioral gate itself — the two-week validation test (`docs/validation.md`).
