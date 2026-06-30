@@ -45,7 +45,7 @@ Required in the stored digest (matches the app's decoder, `Shared/Models/Schema.
 
 Of those, the **helper stamps** `schema_version`, `id`, `created_at` (and defaults `source`) — the caller/LLM must **not** set them. The caller supplies `job_id`, `title`, `bottom_line`, `urgency`, and any optional content.
 
-> **Not in scope for ingest:** read/archive **state writes** are a separate companion endpoint the *app* calls, not the emitter (`architecture.md` § Companion → Store). The emitter only ever creates/updates digest content. Push is the relay's job, triggered by the companion on `urgency ≥ high` — the emitter just sets `urgency` honestly and lets the gate downstream decide.
+> **Not in scope for ingest:** read/archive **state writes** are a separate companion endpoint the *app* calls, not the emitter (`architecture.md` § Companion → Store). The emitter only ever creates/updates digest content. `urgency` is set by the emitter and drives in-app sort order + widget surfacing downstream (`schema.md` → Field notes); the emitter just needs to set it honestly.
 
 ---
 

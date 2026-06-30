@@ -8,7 +8,8 @@ description: Send a recurring digest (AI news, weather, community update, briefi
 Crowly is the user's iOS **inbox/reader** for recurring agent output. When a
 scheduled job has produced something the user should read — a news roundup, a
 weather alert, a weekly community digest, a reminder — emit it as a Crowly
-**digest** so it lands in their inbox (and, if urgent, pushes to their phone).
+**digest** so it lands in their inbox; they'll see it the next time they open
+the app or glance at the home-screen widget.
 
 Crowly is a **reader**: a digest is content the user *reads*, not a prompt to
 act. No questions, no buttons, no callbacks. If you want the user to do
@@ -38,7 +39,7 @@ Keep the token in the cron's secret store / `/opt/data/.env` — never commit it
    | `job_id` | ✅ | stable series id, e.g. `"ai-news-daily"` — groups + colors the digest |
    | `title` | ✅ | the header, e.g. `"AI news — Monday roundup"` |
    | `bottom_line` | ✅ | one-line TL;DR for the card face + widget |
-   | `urgency` | ✅ | `low` \| `normal` \| `high` \| `urgent` — **be honest**: `high`/`urgent` *pushes to the phone*; `normal`/`low` wait to be pulled |
+   | `urgency` | ✅ | `low` \| `normal` \| `high` \| `urgent` — **be honest**: drives in-app sort order and widget surfacing; `high`/`urgent` digests appear more prominently in the app and on the widget |
    | `summary` | optional | main prose body |
    | `sections` | optional | `[{"heading","body"}]` structured detail |
    | `sources` | optional | `[{"title","url"}]` tappable links |
@@ -91,8 +92,8 @@ echo "$content" | python3 emitter/crowly_emit.py --dry-run
 - **Idempotent:** the `id` derives from `job_id` + date + a content hash, so an
   exact re-emit (a retry) updates the same digest; different content the same
   day creates a new one.
-- **urgency drives everything downstream** — sort order, widget surfacing, and
-  whether the phone buzzes. A job that's routine most days but occasionally
-  critical (weather!) should set `urgency` per-emit, not once.
+- **urgency drives surfacing** — in-app sort order and how prominently the
+  digest appears on the widget. A job that's routine most days but
+  occasionally critical (weather!) should set `urgency` per-emit, not once.
 - Full wire contract and field reference: `docs/emitter.md` and
   `docs/schema.md` in the Crowly repo.

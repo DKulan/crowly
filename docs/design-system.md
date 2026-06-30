@@ -576,9 +576,6 @@ struct DigestDetailView: View {
                 ToolbarSpacer(.flexible)
 
                 Menu {
-                    Button("Mute job push", systemImage: "bell.slash") {
-                        store.muteJobPush(digest.jobId)
-                    }
                     #if DEBUG
                     Button("Open as JSON", systemImage: "curlybraces") { /* debug surface */ }
                     #endif
@@ -820,4 +817,4 @@ All semantic colors above ship light + dark variants in the asset catalog. Per-s
 - **Don't gate `[iOS 26]` APIs now.** M1 target is iOS 26 — gates add noise. They go in for M2 when the public target may drop.
 - **Don't add buttons to the widget.** The widget is `Link`-only. Buttons in a reader widget invite the question "what does this do?" — and the answer should always be "open the app to read it."
 - **Don't add a third unread state.** "Snoozed", "muted-but-open", etc., are M2. Two states (unread / not-unread) keep the cell scannable.
-- **Don't reorder by urgency.** Urgency drives push and the urgency glyph; the inbox is strictly chronological.
+- **Don't reorder by urgency.** Urgency drives widget surfacing and the urgency glyph; the inbox is strictly chronological.

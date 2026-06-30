@@ -17,7 +17,7 @@ What it does (the M1 companion-core contract, docs/architecture.md §2):
 
 What it deliberately omits (out of scope for a test stub): TLS (the real one
 requires it and fails loud without it), persistence across restarts (store is
-in-memory), pagination, read/archive state writes, the relay push hop.
+in-memory), pagination, read/archive state writes.
 
 Run:
     python3 companion_stub.py --port 8788 --token testtoken

@@ -6,7 +6,7 @@ description: Build, launch, screenshot, and drive the Crowly iOS demo-mode app i
 # Run Crowly (iOS demo-mode app)
 
 Crowly is a native Swift/SwiftUI **iOS 26** inbox/reader. M1 is **demo mode** —
-fully client-side from `Shared/Demo/` fixtures; no companion, relay, App Group,
+fully client-side from `Shared/Demo/` fixtures; no companion, App Group,
 or signing. It runs simulator-only and unsigned.
 
 The simulator can't be clicked headlessly, so the harness drives it through
