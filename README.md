@@ -51,10 +51,12 @@ See [`docs/architecture.md`](docs/architecture.md) for the full diagram and flow
 - [`docs/concept.md`](docs/concept.md) — full concept, positioning, target users, competition, risks.
 - [`docs/schema.md`](docs/schema.md) — the digest JSON schema and the versioning policy (the part that makes the contract survive drift between independently-deployed parts).
 - [`docs/architecture.md`](docs/architecture.md) — app + companion + relay + emitter; TLS, pairing, push, privacy.
+- [`docs/emitter.md`](docs/emitter.md) — the `POST /ingest` wire contract and the emitter kit (helper + Hermes skill). Implementation in [`emitter/`](emitter/).
 - [`docs/ux.md`](docs/ux.md) — the M1 iOS UI/UX: inbox, digest detail, the home-screen widget.
 - [`docs/design-system.md`](docs/design-system.md) — tokens, components with SwiftUI sketches, FNV-1a job-color algo.
 - [`docs/validation.md`](docs/validation.md) — the M1 two-week personal test, success criteria, kill criteria.
 - [`docs/roadmap.md`](docs/roadmap.md) — M1 (single-user) → M2 (public-ready) build order.
+- [`docs/onboarding.md`](docs/onboarding.md) — single-user install runbook (app + companion + emitter + push) with per-step ✅/🔨/👤 status; doubles as the team's debug checklist.
 - [`docs/naming.md`](docs/naming.md) — the name (**Crowly**), why it was chosen, and how to claim it on the App Store.
 
 ## Status

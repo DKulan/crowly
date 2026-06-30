@@ -1,0 +1,99 @@
+# Crowly companion + Caddy reverse proxy.
+#
+# docs/architecture.md § Networking spells out the TLS shape: the iOS app
+# refuses cleartext HTTP (App Transport Security), so the companion ALWAYS
+# sits behind a public TLS endpoint with a publicly-trusted cert. Caddy is
+# the simplest way to get that on a single VPS — point `companion.example`
+# at the host's IP, set CROWLY_DOMAIN, run `docker compose up`, certs
+# auto-renew via Let's Encrypt. The companion itself only ever serves plain
+# HTTP on the docker network, never to the public.
+#
+# Operator workflow:
+#   1. Put your domain's A record at the VPS.
+#   2. cp .env.example .env  (the file you'll create alongside this one)
+#      then set CROWLY_DOMAIN, CROWLY_PAIRING_TOKEN, CROWLY_PUBLIC_URL.
+#   3. docker compose up -d
+#   4. Open  https://${CROWLY_DOMAIN}/pair  in a browser to copy the JSON,
+#      or scan the QR the app generates from it.
+#
+# Topology recap (architecture.md § Networking — kept here so the operator
+# doesn't have to flip files):
+#
+#   internet ──▶ Caddy :443 (auto-HTTPS) ──▶ companion :8787 (HTTP)
+#                                              │
+#                                              └─▶ /opt/data (SQLite + state)
+
+services:
+  companion:
+    build:
+      context: ..
+      dockerfile: companion/Dockerfile
+    image: crowly-companion:latest
+    container_name: crowly-companion
+    restart: unless-stopped
+    # No published ports — only Caddy on the same compose network can reach
+    # the companion. Keeps the companion off the open internet, which is the
+    # whole point of self-hosting.
+    expose:
+      - "8787"
+    environment:
+      # CROWLY_PAIRING_TOKEN is required — the companion exits at startup if
+      # it's missing. The operator's .env is the single source.
+      CROWLY_PAIRING_TOKEN: ${CROWLY_PAIRING_TOKEN:?CROWLY_PAIRING_TOKEN must be set in .env}
+      CROWLY_DB_PATH: /opt/data/crowly.db
+      CROWLY_HOST: 0.0.0.0
+      CROWLY_PORT: 8787
+      # Public URL is what the *app* dials. With Caddy fronting on the
+      # operator's domain, that's https://${CROWLY_DOMAIN}. The companion
+      # only uses it to build the pairing payload; nothing internal depends
+      # on it being reachable.
+      CROWLY_PUBLIC_URL: ${CROWLY_PUBLIC_URL:-https://${CROWLY_DOMAIN}}
+      # Push relay (optional). Leave any of these unset to disable push;
+      # the companion logs `push disabled (missing: ...)` at boot and the
+      # inbox stays pull-only. All three must be set to enable. The companion
+      # is best-effort about push (a relay outage doesn't fail ingest).
+      CROWLY_RELAY_URL: ${CROWLY_RELAY_URL:-}
+      CROWLY_RELAY_TOKEN: ${CROWLY_RELAY_TOKEN:-}
+      CROWLY_ROUTING_TOKEN: ${CROWLY_ROUTING_TOKEN:-}
+    volumes:
+      # Named volume so the SQLite DB and its -wal/-shm sidecars survive
+      # `docker compose down`. NOT a bind-mount: the user's VPS doesn't need
+      # to know the on-host path, and bind-mount UID quirks are a real
+      # source of "why won't it start" tickets.
+      - crowly-data:/opt/data
+    networks:
+      - crowly
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: crowly-caddy
+    restart: unless-stopped
+    # Caddy needs both 80 (ACME HTTP-01 challenge + automatic redirect) and
+    # 443 (HTTPS to the app). No 8787; the companion is only reachable
+    # through Caddy from outside the docker network.
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # The hostname Caddy provisions a Let's Encrypt cert for. Required.
+      CROWLY_DOMAIN: ${CROWLY_DOMAIN:?CROWLY_DOMAIN must be set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Let's Encrypt cert + key cache. Survives container rebuilds — without
+      # this, every `docker compose up --build` re-asks LE for a cert and
+      # eventually you hit the weekly rate limit.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - companion
+    networks:
+      - crowly
+
+networks:
+  crowly:
+    driver: bridge
+
+volumes:
+  crowly-data:
+  caddy-data:
+  caddy-config:

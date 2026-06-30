@@ -1,0 +1,44 @@
+# Crowly companion — Caddy reverse-proxy config.
+#
+# Caddy gives us auto-HTTPS with Let's Encrypt for free: declare the
+# hostname, declare the upstream, done. The companion serves plain HTTP on
+# port 8787 inside the docker network; Caddy terminates TLS and proxies in.
+#
+# Why this is the topology: docs/architecture.md § Networking requires the
+# companion be fronted by a publicly-trusted TLS cert (the iOS app refuses
+# plain http via App Transport Security). Caddy is the simplest one-step
+# way to get that on a single VPS. The escape hatch in architecture.md
+# (Cloudflare Tunnel / Tailscale Funnel) is a separate deployment shape and
+# not bundled here.
+#
+# {$CROWLY_DOMAIN} is substituted from the env (see docker-compose.yml).
+
+{$CROWLY_DOMAIN} {
+    # Hand off to the companion container by its docker-compose service
+    # name. Caddy's docker-compose-aware DNS resolves `companion` to the
+    # container's network IP.
+    reverse_proxy companion:8787
+
+    # Two belt-and-braces headers. Caddy adds HSTS automatically when serving
+    # over HTTPS; we add no-sniff and a tight referrer policy. These are
+    # cosmetic for a JSON API but they cost nothing and quiet down scanners.
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy        no-referrer
+        # Defense-in-depth against subdomain attacks if the operator ever
+        # serves a UI off this host. Won't affect the JSON API.
+        X-Frame-Options        DENY
+    }
+
+    # Structured access log. Useful in `docker logs crowly-caddy` while
+    # debugging pairing. Companion's own per-write log is on stdout from the
+    # other container.
+    log {
+        output stdout
+        format console
+    }
+
+    # Encourage clients to follow redirects to HTTPS when they accidentally
+    # try http://. Caddy already does this by default at the global level;
+    # this is just an explicit note that it's wanted.
+}

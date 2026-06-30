@@ -1,18 +1,24 @@
-// DigestStore — the in-memory view-model that the app reads from.
+// DigestStore — the in-memory view-model the app reads from.
 //
-// In M1 demo mode this is fed by `DemoFixtures`. When real ingestion arrives,
-// this same store will be backed by HTTP/JSON from the user's companion — the
-// UI surface doesn't change.
+// Two modes, picked at launch from the credential store:
 //
-// What lives here:
-//   - The canonical list of digests (newest-first)
-//   - Per-digest read/archived state
-//   - Inbox sectioning by relative date
-//   - Search + the most-recent archive undo target
+//   * **Demo mode** (unpaired). Seeded from `DemoFixtures.digests`; mutations
+//     are local-only. This is the first-run default and the only thing a
+//     non-self-hoster (incl. an App Reviewer) sees. CLAUDE.md hard invariant:
+//     demo mode stays intact unless the user has paired.
 //
-// Concurrency: @MainActor — all UI state changes happen on the main actor,
-// which keeps Swift 6 strict-concurrency happy and matches the SwiftUI
-// rendering model.
+//   * **Live mode** (paired). Pulled from the user's companion via
+//     `CompanionClient.list()`. Read/archive mutations mirror to the
+//     companion via `POST /state` so it remains the source of truth
+//     (architecture.md § Companion → Store: "state lives here too, mirrored
+//     from the app via simple state-change writes").
+//
+// The UI never branches on mode — the inbox just reads `digests` and the
+// mutation API. The store handles the rest.
+//
+// Concurrency: @MainActor — all UI state changes happen on the main actor.
+// Mirror writes to the companion are fired off as detached tasks so a slow
+// POST never blocks the optimistic local flip.
 
 import SwiftUI
 import Foundation
@@ -25,8 +31,9 @@ final class DigestStore {
     // MARK: - Inputs
 
     /// Demo-mode flag. Drives the demo banner and seeds the store with
-    /// `DemoFixtures.digests`. M1 default is `true`.
-    var isInDemoMode: Bool
+    /// `DemoFixtures.digests`. Computed from `credentials.isPaired` at
+    /// launch and after a successful pair / disconnect.
+    private(set) var isInDemoMode: Bool
 
     // MARK: - Backing state
 
@@ -39,17 +46,53 @@ final class DigestStore {
     /// a swipe.
     private(set) var lastArchivedId: String?
 
+    /// Last refresh failure, surfaced to the UI for the pull-to-refresh
+    /// error path. Cleared on the next successful refresh.
+    private(set) var lastRefreshError: CompanionError?
+
+    // MARK: - Dependencies
+
+    /// Source of credentials. Tests swap in `InMemoryCredentialStore`.
+    private let credentials: CredentialStore
+
+    /// Real client when paired; `nil` in demo mode. We build this lazily
+    /// (and rebuild it on re-pair) so a stale client never out-lives a
+    /// disconnect.
+    private var client: CompanionClient?
+
     // MARK: - Init
 
+    /// Default path: demo mode with bundled fixtures, no credential store
+    /// access. Used by previews and the existing test suite — the test
+    /// store should never reach into the real keychain.
+    convenience init() {
+        self.init(credentials: InMemoryCredentialStore())
+    }
+
+    /// Live/test path. Pass `KeychainStore()` from the app for the real
+    /// keychain-backed credential source; pass `InMemoryCredentialStore()`
+    /// for tests. When `credentials.isPaired` is true we start empty and
+    /// the caller refreshes; otherwise we seed demo fixtures.
     init(
-        digests: [Digest] = DemoFixtures.digests,
-        isInDemoMode: Bool = true
+        credentials: CredentialStore,
+        seedDigests: [Digest]? = nil
     ) {
-        self.digests = digests
-        self.isInDemoMode = isInDemoMode
-        // All digests start `.unread` so the inbox shows the right cue.
-        for d in digests {
-            self.digestStates[d.id] = .unread
+        self.credentials = credentials
+        let paired = credentials.isPaired
+        self.isInDemoMode = !paired
+
+        if paired {
+            // Live mode: start empty so the inbox doesn't briefly show demo
+            // fixtures over a real account. The view triggers a refresh.
+            self.digests = seedDigests ?? []
+            self.client = CompanionClient(credentials: credentials)
+        } else {
+            // Demo mode: seed from fixtures, identical to prior behaviour.
+            self.digests = seedDigests ?? DemoFixtures.digests
+            self.client = nil
+            for d in self.digests {
+                self.digestStates[d.id] = .unread
+            }
         }
     }
 
@@ -130,11 +173,15 @@ final class DigestStore {
     // MARK: - Mutations
 
     /// Mark a digest as read. Idempotent — once read, it stays read until
-    /// archived.
+    /// archived. In live mode the change mirrors to the companion in the
+    /// background; a network failure does NOT roll back the local flip
+    /// (the app stays usable offline; a future refresh resyncs).
     func markRead(_ digest: Digest) {
-        if digestStates[digest.id] == .unread || digestStates[digest.id] == nil {
-            digestStates[digest.id] = .read
+        guard digestStates[digest.id] == .unread || digestStates[digest.id] == nil else {
+            return
         }
+        digestStates[digest.id] = .read
+        mirrorState(id: digest.id, state: .read)
     }
 
     /// Archive a digest. Captures the id so the swipe-undo affordance can
@@ -142,6 +189,7 @@ final class DigestStore {
     func archive(_ digest: Digest) {
         digestStates[digest.id] = .archived
         lastArchivedId = digest.id
+        mirrorState(id: digest.id, state: .archived)
     }
 
     /// Undo the most recent archive. Returns the unarchived digest's id (or
@@ -153,15 +201,97 @@ final class DigestStore {
         // archiving, leaving it unread on undo would be a lie.
         digestStates[id] = .read
         lastArchivedId = nil
+        mirrorState(id: id, state: .read)
         return id
     }
 
-    // MARK: - Demo refresh (no-op; surface for `.refreshable`)
-
-    func refresh() async {
-        // No-op in demo mode; real mode hits the companion.
-        try? await Task.sleep(nanoseconds: 200_000_000)
+    /// Fire-and-forget state mirror. Demo mode skips it; live mode posts
+    /// without awaiting (the local mutation has already happened, and the
+    /// inbox UI is optimistic). A logged failure here is fine — the next
+    /// successful `refresh()` will pull authoritative state.
+    private func mirrorState(id: String, state: DigestState) {
+        guard let client else { return }
+        Task.detached(priority: .utility) {
+            do {
+                try await client.setState(id: id, state: state)
+            } catch {
+                // Best-effort: log to console; UI doesn't surface this.
+                // Reasoning: state writes are an optimization for cross-device
+                // sync (architecture.md § Push reload), not a user-facing
+                // contract. If a write drops, the next /list re-snapshots it.
+                #if DEBUG
+                print("[DigestStore] mirrorState failed: \(error)")
+                #endif
+            }
+        }
     }
+
+    // MARK: - Refresh
+
+    /// Pull-to-refresh handler. In demo mode it's a brief no-op so the
+    /// `.refreshable` spinner feels honest; in live mode it hits `/list`
+    /// and replaces the in-memory state with the companion's view.
+    func refresh() async {
+        guard let client else {
+            // Demo mode: a tiny pause so the spinner doesn't disappear instantly.
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            return
+        }
+        do {
+            let envelopes = try await client.list()
+            apply(envelopes: envelopes)
+            lastRefreshError = nil
+        } catch let error as CompanionError {
+            lastRefreshError = error
+        } catch {
+            lastRefreshError = .unreachable(underlying: error.localizedDescription)
+        }
+    }
+
+    /// Replace the digest list + state from a fresh `/list`. Local archive-
+    /// undo affordances are cleared — once the server's authoritative state
+    /// arrives, an undo against a stale archive isn't meaningful anyway.
+    private func apply(envelopes: [DigestEnvelope]) {
+        self.digests = envelopes.map(\.digest)
+        var states: [String: DigestState] = [:]
+        for env in envelopes {
+            states[env.digest.id] = env.state
+        }
+        self.digestStates = states
+        self.lastArchivedId = nil
+    }
+
+    // MARK: - Pairing transitions
+
+    /// Called by the pairing view after credentials have been written to
+    /// the keychain. Flips the store into live mode and triggers an initial
+    /// refresh so the first real digest replaces the demo fixtures.
+    func didPair() async {
+        // Rebuild the client against the freshly-stored credentials.
+        self.client = CompanionClient(credentials: credentials)
+        self.isInDemoMode = false
+        self.digests = []
+        self.digestStates = [:]
+        self.lastArchivedId = nil
+        await refresh()
+    }
+
+    /// Called by the settings/disconnect path. Clears credentials and falls
+    /// back to demo fixtures so the inbox is never empty.
+    func didDisconnect() {
+        try? credentials.clearAll()
+        self.client = nil
+        self.isInDemoMode = true
+        self.digests = DemoFixtures.digests
+        self.digestStates = [:]
+        for d in self.digests {
+            self.digestStates[d.id] = .unread
+        }
+        self.lastArchivedId = nil
+        self.lastRefreshError = nil
+    }
+
+    // MARK: - Convenience
 
     var isEmpty: Bool { digests.isEmpty }
 

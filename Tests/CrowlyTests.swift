@@ -292,6 +292,22 @@ import Foundation
 
 // MARK: - Deeplink URL parsing
 
+@Test func deepLinkRouterRecognizesPairURL() {
+    #expect(DeepLinkRouter.isPairURL(URL(string: "crowly://pair")!))
+    #expect(!DeepLinkRouter.isPairURL(URL(string: "crowly://digest/abc")!))
+    #expect(!DeepLinkRouter.isPairURL(URL(string: "https://pair")!))
+}
+
+@Test @MainActor func deepLinkRouterPairURLSetsPendingPair() {
+    let router = DeepLinkRouter()
+    #expect(!router.pendingPair)
+    router.handle(URL(string: "crowly://pair")!)
+    #expect(router.pendingPair)
+    // A subsequent non-pair URL should not toggle it back off.
+    router.handle(URL(string: "crowly://digest/dgst_x")!)
+    #expect(router.pendingPair)
+}
+
 @Test func deepLinkRouterParsesCrowlyDigestURL() {
     #expect(DeepLinkRouter.digestId(from: URL(string: "crowly://digest/abc-123")!) == "abc-123")
     // Trailing slash tolerated.
@@ -311,6 +327,48 @@ import Foundation
 
     router.handle(URL(string: "crowly://digest/dgst_x")!)
     #expect(router.pendingDigestId == "dgst_x")
+}
+
+// MARK: - Emitter wire contract
+
+/// The emitter kit (`emitter/crowly_emit.py`) builds digest envelopes and
+/// POSTs them to the companion. This proves a payload in the exact shape the
+/// emitter produces — helper-stamped `schema_version`/`id`/`created_at`,
+/// `+00:00`-offset timestamp, and a v2-only field carried through — decodes
+/// cleanly in the app's real `Digest` decoder, including unknown-field
+/// passthrough. If this breaks, the emitter and the app have drifted apart.
+@Test func emitterOutputShapeDecodes() throws {
+    // Captured verbatim from: python3 crowly_emit.py --content-file sample_content.json --dry-run
+    let json = """
+    {
+      "job_id": "harmony-weekly-public-digest",
+      "title": "Harmony Community — weekly digest",
+      "urgency": "low",
+      "bottom_line": "Council met Thursday — two new bylaw drafts in public comment.",
+      "summary": "Quiet week.",
+      "sections": [
+        { "heading": "Bylaw watch", "body": "Regional off-site levy updates remain under review." }
+      ],
+      "sources": [
+        { "title": "Rocky View County Bylaws Under Review", "url": "https://www.rockyview.ca/government/bylaws/bylaws-under-review" }
+      ],
+      "schema_version": 1,
+      "source": "hermes-cron",
+      "created_at": "2026-06-30T01:40:39+00:00",
+      "id": "dgst_2026-06-30_harmony-weekly-public-digest_4531007f",
+      "forecast_confidence": "moderate"
+    }
+    """
+    let digest = try JSONDecoder().decode(Digest.self, from: Data(json.utf8))
+    #expect(digest.id == "dgst_2026-06-30_harmony-weekly-public-digest_4531007f")
+    #expect(digest.jobId == "harmony-weekly-public-digest")
+    #expect(digest.urgency == .low)
+    #expect(digest.sections.count == 1)
+    #expect(digest.sources.count == 1)
+    // The emitter's `+00:00` offset parses (CrowlyISO8601 tolerates Z + numeric).
+    #expect(digest.createdAt < CrowlyISO8601.parse("2026-07-01T00:00:00Z")!)
+    // The v2-only field the helper passed through is preserved verbatim.
+    #expect(digest.extras["forecast_confidence"] == .string("moderate"))
 }
 
 // MARK: - Fixture date sanity
