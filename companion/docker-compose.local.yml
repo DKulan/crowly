@@ -37,6 +37,20 @@ services:
       CROWLY_PUBLIC_URL: ${CROWLY_PUBLIC_URL:?set CROWLY_PUBLIC_URL to the tunnel public URL}
     volumes:
       - crowly-data:/opt/data
+    networks:
+      # Default bridge for the loopback publish (Funnel → 127.0.0.1:8787),
+      # plus a shared external network so a co-located agent container (e.g.
+      # Hermes) can reach the companion as http://crowly-companion:8787 over
+      # plain HTTP — no TLS/cert issues, never leaves the host. The agent
+      # emits via this internal name; the phone uses the public Funnel URL.
+      - default
+      - crowly-net
+
+networks:
+  crowly-net:
+    # External: created once by the operator (`docker network create crowly-net`)
+    # and shared with the Hermes compose, so neither project owns/destroys it.
+    external: true
 
 volumes:
   crowly-data:
