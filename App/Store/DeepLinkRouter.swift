@@ -24,6 +24,12 @@ final class DeepLinkRouter {
     /// after pushing the destination so the same link can fire twice.
     var pendingDigestId: String? = nil
 
+    /// Set when a `crowly://pair` URL arrives — drives the inbox into
+    /// presenting `PairCompanionView`. The URL is undocumented and exists
+    /// so an App Reviewer (and the run-crowly skill) has a deterministic
+    /// way to surface the pairing UI without touching the screen.
+    var pendingPair: Bool = false
+
     /// Parse a `crowly://digest/<id>` URL. Returns the id, or `nil` if the
     /// URL isn't a digest deeplink. Defensive: ignores unknown hosts /
     /// trailing slashes so future URL shapes can be added additively.
@@ -37,9 +43,19 @@ final class DeepLinkRouter {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// Set the pending id from a URL. No-op if the URL doesn't parse.
+    /// True iff the URL is `crowly://pair` (the pair-sheet shortcut).
+    nonisolated static func isPairURL(_ url: URL) -> Bool {
+        url.scheme == "crowly" && url.host == "pair"
+    }
+
+    /// Route a URL into the right pending slot. No-op if neither matches.
     func handle(_ url: URL) {
-        guard let id = Self.digestId(from: url) else { return }
-        pendingDigestId = id
+        if let id = Self.digestId(from: url) {
+            pendingDigestId = id
+            return
+        }
+        if Self.isPairURL(url) {
+            pendingPair = true
+        }
     }
 }

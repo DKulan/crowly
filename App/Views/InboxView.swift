@@ -15,6 +15,9 @@ struct InboxView: View {
     /// whenever the swipe action fires; cleared after the toast times out.
     @State private var undoArchiveId: String?
     @State private var undoTask: Task<Void, Never>?
+    /// Drives the pairing sheet. Surfaced from the demo-mode banner and
+    /// the toolbar "Connect" button.
+    @State private var showPairSheet: Bool = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -68,10 +71,29 @@ struct InboxView: View {
             .refreshable { await store.refresh() }
             .safeAreaInset(edge: .top) {
                 if store.isInDemoMode {
-                    DemoModeBanner()
-                        .padding(.horizontal, Space.m)
-                        .padding(.vertical, Space.s)
+                    Button { showPairSheet = true } label: {
+                        DemoModeBanner()
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, Space.m)
+                    .padding(.vertical, Space.s)
+                    .accessibilityHint("Tap to connect a Crowly companion.")
                 }
+            }
+            .toolbar {
+                if store.isInDemoMode {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showPairSheet = true
+                        } label: {
+                            Label("Connect inbox", systemImage: "link.badge.plus")
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showPairSheet) {
+                PairCompanionView()
+                    .environment(store)
             }
             .safeAreaInset(edge: .bottom) {
                 if undoArchiveId != nil {
@@ -108,6 +130,14 @@ struct InboxView: View {
                     path = [id]
                 }
                 router.pendingDigestId = nil
+            }
+            // `crowly://pair` deeplink — undocumented surface used by the
+            // run-crowly skill (and an App Reviewer with no other way to
+            // tap a toolbar button) to present the pairing sheet.
+            .onChange(of: router.pendingPair) { _, requested in
+                guard requested else { return }
+                showPairSheet = true
+                router.pendingPair = false
             }
         }
     }
