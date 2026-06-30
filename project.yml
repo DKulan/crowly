@@ -51,17 +51,6 @@ targets:
           - CFBundleTypeRole: Editor
             CFBundleURLName: com.crowly.Crowly
             CFBundleURLSchemes: [crowly]
-        # Central push relay base URL. EMPTY by default: demo / App-Review
-        # builds (and dev builds with no relay yet) never reach out to a relay,
-        # so the app never prompts for notifications until a real relay URL is
-        # set here AND the user has paired a companion. Fill this in for a push-
-        # enabled build (e.g. https://relay.crowly.app). See App/Net/RelayClient.
-        CrowlyRelayURL: ""
-        # Real APNs delivery additionally requires the `aps-environment`
-        # entitlement (development/production) and a paid Apple Developer
-        # account — wired via App/Crowly.entitlements when push goes live on a
-        # device. Simulator-unsigned M1 builds register-and-no-op (the sim has
-        # no real APNs token). See relay/README.md for the on-device runbook.
     dependencies:
       - target: CrowlyWidgetExtension
 

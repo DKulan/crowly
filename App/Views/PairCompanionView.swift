@@ -210,10 +210,6 @@ struct PairCompanionView: View {
 
         status = .succeeded
         await store.didPair()
-        // Now that we're paired, ask for push and register the device with the
-        // relay (best-effort, no-op if no relay URL is baked into this build).
-        // This is the only point we prompt for notifications — never in demo.
-        await PushRegistrar.shared.registerForPushIfPaired()
         dismiss()
     }
 }

@@ -40,7 +40,7 @@ Object model:
 
 Sectioned `List`, sticky **date** headers (Today / Yesterday / This week / Earlier), pull-to-refresh, `.searchable($query).searchToolbarBehavior(.minimize)`. Job grouping is a *filter*, not the default — chronological scan wins for <10 active jobs.
 
-**Sort:** `created_at` desc within each date section. `urgency` `high`/`urgent` get a small leading exclamation glyph but do **not** reorder — the inbox is a chronological reading queue. (Urgency drives push and widget surfacing, not list order.)
+**Sort:** `created_at` desc within each date section. `urgency` `high`/`urgent` get a small leading exclamation glyph but do **not** reorder — the inbox is a chronological reading queue. (Urgency drives widget surfacing, not list order.)
 
 **Cell anatomy:**
 
@@ -93,12 +93,12 @@ Order: **Header → Bottom line → Summary → Sections → Sources → Footer.
 - The detail opens with the **bottom line** in a tinted callout — this is the one piece of prose that earns top-of-screen real estate because it's the digest's own TL;DR.
 - **Summary and sections render in the order the emitter sent them.** No reordering, no priority weighting — the agent decided what matters; the reader respects that.
 - **Sources** are tappable rows that open `SFSafariViewController` in-app (never a `WKWebView`, never an external Safari kick-out).
-- **Bottom bar** has **Archive** as the primary action and a `⋯` menu for "Mute job" (suppresses *push* for that `job_id`; the digests still arrive and land in the inbox) and "Open as JSON" (debug surface, hidden in non-debug builds).
+- **Bottom bar** has **Archive** as the primary action and a `⋯` menu for "Open as JSON" (debug surface, hidden in non-debug builds).
 - **No "mark handled" button.** Opening the digest marks it read; that's the only read-state transition the user needs.
 
 ## Home-screen widget
 
-Fed by `GET /summary` (cheap; returns latest few digests + unread count). Timeline reloads on push (relay → APNs → `reloadTimelines`), with a **~15-minute reload floor** as the relay-outage degradation path (see [`architecture.md`](architecture.md) → Push).
+Fed by `GET /summary` (cheap; returns latest few digests + unread count). The widget's `TimelineProvider` reloads on its own **~15-minute floor**, refreshing from `GET /summary` — that's the entire refresh model (see [`architecture.md`](architecture.md) → Refresh model).
 
 **Every widget size is read-only — tap deeplinks into the app; nothing else.** This is the reader-pivot's biggest UX move: no buttons in the widget, no answer affordances, no action verbs. The widget's job is "here's what just arrived; tap to read it."
 
@@ -124,14 +124,14 @@ Constraints respected:
 
 1. Launch → **Demo Mode** by default (3 canned digests of varied urgencies and shapes, fully client-side). Reachable afterward from Settings → "Show demo digests" (for App Review).
 2. Pinned `.safeAreaInset(.top)` banner "Connect your Crowly inbox →" → **PairCompanionView**.
-3. Pair: camera scanner reads the QR `{companion_url, pairing_token, …}`, validates by hitting the companion over HTTPS, stores credentials in the **Keychain**, hands the companion the `routing_token`, dismisses with success. Manual "Enter URL and token instead" fallback for the QR-averse and as a Reviewer escape valve.
+3. Pair: camera scanner reads the QR `{companion_url, pairing_token, …}`, validates by hitting the companion over HTTPS, stores credentials in the **Keychain**, dismisses with success. Manual "Enter URL and token instead" fallback for the QR-averse and as a Reviewer escape valve.
 4. First real digest pulled → demo banner disappears. That transition is the "aha."
 
 (Pairing wire-protocol detail lives in [`architecture.md`](architecture.md) → Pairing.)
 
 ## iOS specifics
 
-**Use:** App Group container for the widget's small state + a JSON/SwiftData digest cache; `SFSafariViewController` for external sources (never an in-app `WKWebView`); `ContentUnavailableView` for every empty/error state; `UNNotificationCategory` with a single "Archive" action so a notification can be dismissed-with-state without opening the app.
+**Use:** App Group container for the widget's small state + a JSON/SwiftData digest cache; `SFSafariViewController` for external sources (never an in-app `WKWebView`); `ContentUnavailableView` for every empty/error state.
 
 **Avoid in M1:** custom navigation/zoom transitions; **Lock Screen widgets** (defer — they add platform surface without changing the read flow); background URL session for state writes (synchronous POST + retry-on-foreground is enough); `Button(intent:)` widgets (no action surface in a reader).
 
@@ -139,7 +139,7 @@ Constraints respected:
 
 1. Spotlight indexing / `.userActivity` → M2.
 2. Large widget — small + medium covers the demo.
-3. `⋯` menu in detail bottom bar (Mute job, Open as JSON) — Archive alone is enough for M1.
+3. `⋯` menu in detail bottom bar (Open as JSON) — Archive alone is enough for M1.
 4. Search — chronological scan covers <50 digests; revisit if the inbox grows.
 
 **Keep no matter what — this triad *is* the M1 product:** the inbox cell with date sectioning and unread dot · the detail view rendering header → bottom line → summary → sections → sources · the medium widget with 2–3 latest digests and an unread count.

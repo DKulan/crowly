@@ -12,7 +12,7 @@
 // What this does NOT own:
 //   - Storage of credentials (lives in KeychainStore)
 //   - State (lives in DigestStore)
-//   - APNs / push (lives in a future RelayClient; M1 is pull-only).
+//   - Push notifications — out of scope for the MVP; the app is pull-only.
 //
 // Wire contract — see docs/architecture.md § Pairing/Networking and
 // companion/server.py:

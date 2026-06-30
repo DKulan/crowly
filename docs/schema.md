@@ -44,7 +44,7 @@ The emitter kit (`docs/architecture.md` → Emitter) builds this JSON and POSTs 
 - `source` — a short string identifying the system that produced the digest (`hermes-cron`, `n8n`, `manual`). Informational; not used for routing.
 - `title` — the human-readable header of the digest. Required.
 - `created_at` — ISO-8601 timestamp. Used for sort order and date sectioning in the inbox.
-- `urgency` — `low | normal | high | urgent`. Drives **in-app sort order**, **widget surfacing**, and **push gating** (see `docs/architecture.md` → Push). It is the only signal the app uses to decide whether to surface a digest urgently.
+- `urgency` — `low | normal | high | urgent`. Drives **in-app sort order** and **widget surfacing**. It is the only signal the app uses to decide whether to surface a digest more prominently.
 - `bottom_line` — one-line TL;DR for the card face and the widget row. Required.
 - `summary` — the main prose body. Optional; rendered in the detail view below the bottom line.
 - `sections[]` — optional structured headings + body prose. Rendered in detail after the summary. Each is `{heading, body}`.
