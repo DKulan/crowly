@@ -1,12 +1,13 @@
-// Crowly Shared-layer tests (Swift Testing).
+// Crowly reader-layer tests (Swift Testing).
 //
-// What we prove here (per the team-lead brief):
+// What we prove here:
 //   - Job-color determinism: same job_id → same hue, every time, across launches.
 //   - Schema decoding incl. unknown-field passthrough (additive-only invariant).
-//   - Route resolution incl. the terminal "Log in inbox" fallback.
-//   - parent_question_id round-trips.
-//   - Demo fixtures meet the shape requirements (≥3, open loops, action items,
-//     one pure-info, one with parent_question_id).
+//   - Demo fixtures meet the reader shape requirements (≥4 digests, varied
+//     urgency, some with sections + sources).
+//   - DigestStore: unread/read/archived state, archive filtering, undo,
+//     section sort order.
+//   - Deeplink URL parsing.
 
 import Testing
 import Foundation
@@ -15,7 +16,7 @@ import Foundation
 // MARK: - Job color determinism
 
 @Test func jobColorHueIsDeterministicAcrossCalls() {
-    let id = "harmony-weekly-public-digest"
+    let id = "ai-news-daily"
     let h1 = JobColor.hue(for: id)
     let h2 = JobColor.hue(for: id)
     let h3 = JobColor.hue(for: id)
@@ -24,8 +25,8 @@ import Foundation
 }
 
 @Test func jobColorHueIsDifferentForDifferentJobIds() {
-    let a = JobColor.hue(for: "harmony-weekly-public-digest")
-    let b = JobColor.hue(for: "alberta-move-coordination")
+    let a = JobColor.hue(for: "ai-news-daily")
+    let b = JobColor.hue(for: "weather-local")
     // Not strictly guaranteed by FNV-1a, but extremely likely for these two.
     #expect(a != b)
 }
@@ -38,7 +39,7 @@ import Foundation
 }
 
 @Test func jobColorHueInUnitRange() {
-    for id in ["a", "ab", "abc", "harmony", "alberta-move-coordination", ""] {
+    for id in ["a", "ab", "abc", "harmony", "ai-news-daily", ""] {
         let h = JobColor.hue(for: id)
         #expect(h >= 0.0)
         #expect(h < 1.0)
@@ -47,57 +48,35 @@ import Foundation
 
 // MARK: - Schema decoding + unknown-field passthrough
 
-@Test func digestDecodesFromSchemaMdExampleJson() throws {
+@Test func digestDecodesFromReaderShape() throws {
     let json = """
     {
       "schema_version": 1,
-      "id": "dgst_2026-06-29_harmony",
-      "job_id": "harmony-weekly-public-digest",
+      "id": "dgst_2026-06-29_ai-news",
+      "job_id": "ai-news-daily",
       "source": "hermes-cron",
-      "title": "Harmony Community Digest",
-      "created_at": "2026-06-29T19:00:00-04:00",
-      "urgency": "low",
-      "bottom_line": "No urgent action items.",
-      "summary": "Full prose summary",
+      "title": "AI news — Monday roundup",
+      "created_at": "2026-06-29T07:15:00-04:00",
+      "urgency": "normal",
+      "bottom_line": "Two major model releases this weekend.",
+      "summary": "Quiet weekend on the policy front; loud one on releases.",
       "sections": [
-        { "heading": "Bylaw watch", "body": "Updates under review." }
-      ],
-      "action_items": [
-        {
-          "id": "a1",
-          "text": "Confirm Interlane EV9 drop-off window",
-          "route": "task",
-          "hints": { "project": "Alberta Move", "labels": ["@hermes", "@vendor"] }
-        }
-      ],
-      "questions": [
-        {
-          "id": "q1",
-          "text": "Should I start tracking?",
-          "reply_kind": "yes_no",
-          "on_answer": {
-            "yes": { "route": "task", "hints": { "text": "Set up watch" } },
-            "no":  { "route": "none" }
-          }
-        }
+        { "heading": "Releases", "body": "Two flagship updates landed." }
       ],
       "sources": [
-        { "title": "RVC Bylaws", "url": "https://www.rockyview.ca/bylaws" }
+        { "title": "Anthropic", "url": "https://www.anthropic.com/news" }
       ]
     }
     """.data(using: .utf8)!
 
     let digest = try JSONDecoder().decode(Digest.self, from: json)
     #expect(digest.schemaVersion == 1)
-    #expect(digest.id == "dgst_2026-06-29_harmony")
-    #expect(digest.jobId == "harmony-weekly-public-digest")
-    #expect(digest.urgency == .low)
-    #expect(digest.actionItems.count == 1)
-    #expect(digest.actionItems[0].route.intent == .task)
-    #expect(digest.questions.count == 1)
-    #expect(digest.questions[0].replyKind == .yesNo)
-    #expect(digest.questions[0].onAnswer?["yes"]?.route.intent == Intent.task)
-    #expect(digest.questions[0].onAnswer?["no"]?.route.intent == Intent.none)
+    #expect(digest.id == "dgst_2026-06-29_ai-news")
+    #expect(digest.jobId == "ai-news-daily")
+    #expect(digest.urgency == .normal)
+    #expect(digest.bottomLine == "Two major model releases this weekend.")
+    #expect(digest.sections.count == 1)
+    #expect(digest.sections[0].heading == "Releases")
     #expect(digest.sources.count == 1)
 }
 
@@ -127,42 +106,6 @@ import Foundation
     }
 }
 
-@Test func actionItemPreservesUnknownFields() throws {
-    let json = """
-    {
-      "id": "a1",
-      "text": "X",
-      "route": "task",
-      "hints": {"project": "P"},
-      "unknown_future_thing": true
-    }
-    """.data(using: .utf8)!
-
-    let item = try JSONDecoder().decode(ActionItem.self, from: json)
-    #expect(item.id == "a1")
-    #expect(item.extras["unknown_future_thing"] == .bool(true))
-}
-
-@Test func questionPreservesUnknownFields() throws {
-    let json = """
-    {
-      "id": "q1",
-      "text": "Why?",
-      "reply_kind": "yes_no",
-      "on_answer": { "yes": {"route": "note"}, "no": {"route": "none"} },
-      "v3_only_field": [1, 2, 3]
-    }
-    """.data(using: .utf8)!
-
-    let q = try JSONDecoder().decode(Question.self, from: json)
-    #expect(q.id == "q1")
-    if case .array(let arr) = q.extras["v3_only_field"] {
-        #expect(arr.count == 3)
-    } else {
-        Issue.record("Expected array preserved in question extras")
-    }
-}
-
 @Test func digestRoundTripsExtras() throws {
     let json = """
     {
@@ -184,19 +127,30 @@ import Foundation
     #expect(redecoded.extras["future_field"] == .string("v2-only"))
 }
 
-@Test func unknownRouteIsTolerantAndDecodes() throws {
+@Test func digestIgnoresRemovedV0FieldsButPreservesThem() throws {
+    // A v0 emitter (back when the schema carried questions / action_items)
+    // must still decode through the reader — and the fields survive as extras
+    // so a downstream v0-aware consumer can still read them on round-trip.
     let json = """
     {
-      "id": "a1",
-      "text": "X",
-      "route": "create_watch"
+      "schema_version": 1,
+      "id": "dgst_x",
+      "job_id": "job-x",
+      "source": "hermes-cron",
+      "title": "T",
+      "created_at": "2026-06-29T19:00:00Z",
+      "urgency": "normal",
+      "bottom_line": "x",
+      "questions": [{"id": "q1", "text": "?", "reply_kind": "yes_no"}],
+      "action_items": [{"id": "a1", "text": "x", "route": "task"}]
     }
     """.data(using: .utf8)!
 
-    let item = try JSONDecoder().decode(ActionItem.self, from: json)
-    // Unknown route doesn't crash; intent is nil; raw is preserved.
-    #expect(item.route.intent == nil)
-    #expect(item.route.raw == "create_watch")
+    let digest = try JSONDecoder().decode(Digest.self, from: json)
+    #expect(digest.id == "dgst_x")
+    // The reader doesn't *model* questions/actions, but it preserves them.
+    #expect(digest.extras["questions"] != nil)
+    #expect(digest.extras["action_items"] != nil)
 }
 
 @Test func unknownUrgencyDegradesToNormal() throws {
@@ -217,314 +171,127 @@ import Foundation
     #expect(digest.urgency == .normal)
 }
 
-@Test func parentQuestionIdDecodesAndRoundTrips() throws {
-    let json = """
-    {
-      "schema_version": 1,
-      "id": "dgst_x",
-      "job_id": "job-x",
-      "source": "hermes-followup",
-      "title": "Followup result",
-      "created_at": "2026-06-29T19:00:00Z",
-      "urgency": "normal",
-      "bottom_line": "x",
-      "parent_question_id": "q42"
-    }
-    """.data(using: .utf8)!
-
-    let decoded = try JSONDecoder().decode(Digest.self, from: json)
-    #expect(decoded.parentQuestionId == "q42")
-
-    let reencoded = try JSONEncoder().encode(decoded)
-    let redecoded = try JSONDecoder().decode(Digest.self, from: reencoded)
-    #expect(redecoded.parentQuestionId == "q42")
-}
-
-// MARK: - Route resolution
-
-@Test func routeResolverResolvesSupportedIntent() {
-    let resolver = RouteResolver(capabilities: DemoCapabilities.standard)
-    let resolution = resolver.resolve(rawIntent: .task)
-    #expect(resolution.intent == .task)
-    #expect(resolution.verb == "Add as task")
-    #expect(resolution.enabled)
-}
-
-@Test func routeResolverFallsBackToTerminalForUnsupportedIntent() {
-    // Capabilities with NO supported routes — every capability-aware intent
-    // must degrade to .terminal ("Log in inbox") so nothing is dropped.
-    let bareCaps = Capabilities(
-        schemaVersion: 1,
-        companionVersion: "0.0.1",
-        supportedReplyKinds: [.yesNo],
-        supportedRoutes: []
-    )
-    let resolver = RouteResolver(capabilities: bareCaps)
-    let resolution = resolver.resolve(rawIntent: .task)
-    #expect(resolution.intent == .terminal)
-    #expect(resolution.verb == "Log in inbox")
-    #expect(resolution.enabled)
-    #expect(resolution.sublabel?.contains("task unavailable") == true)
-}
-
-@Test func routeResolverResolvesYesNoOnAnswer() {
-    let resolver = RouteResolver(capabilities: DemoCapabilities.standard)
-    let q = Question(
-        id: "q1",
-        text: "?",
-        replyKind: .yesNo,
-        onAnswer: [
-            "yes": OnAnswerLeg(route: TolerantIntent(intent: Intent.task, raw: "task")),
-            "no":  OnAnswerLeg(route: TolerantIntent(intent: Intent.none, raw: "none"))
-        ]
-    )
-    let yes = resolver.resolve(forAnswer: "yes", of: q)
-    let no  = resolver.resolve(forAnswer: "no", of: q)
-    #expect(yes.intent == Intent.task)
-    #expect(no.intent == Intent.none)
-}
-
-@Test func routeResolverActionItemTerminalFallback() {
-    let bareCaps = Capabilities(
-        schemaVersion: 1,
-        companionVersion: "0.0.1",
-        supportedReplyKinds: [.yesNo],
-        supportedRoutes: []
-    )
-    let resolver = RouteResolver(capabilities: bareCaps)
-    let action = ActionItem(
-        id: "a1",
-        text: "X",
-        route: TolerantIntent(intent: .note, raw: "note")
-    )
-    let resolution = resolver.resolve(action)
-    #expect(resolution.intent == .terminal)
-    #expect(resolution.enabled)            // never silently dropped
-}
-
-@Test func routeResolverHasOverridesForTaskWithHints() {
-    let resolver = RouteResolver(capabilities: DemoCapabilities.standard)
-    let action = ActionItem(
-        id: "a1",
-        text: "X",
-        route: TolerantIntent(intent: .task, raw: "task"),
-        hints: [
-            "project": .string("P"),
-            "labels": .array([.string("L")])
-        ]
-    )
-    let resolution = resolver.resolve(action)
-    #expect(resolution.hasOverrides)
-}
-
-@Test func routeResolverNoOverridesForNoteIntent() {
-    let resolver = RouteResolver(capabilities: DemoCapabilities.standard)
-    let action = ActionItem(
-        id: "a1",
-        text: "X",
-        route: TolerantIntent(intent: .note, raw: "note"),
-        hints: ["project": .string("P")]
-    )
-    let resolution = resolver.resolve(action)
-    // Per the resolver: overrides only meaningful for task-like intents.
-    #expect(!resolution.hasOverrides)
-}
-
 // MARK: - Demo fixtures invariants
 
-@Test func demoFixturesAreAtLeastThree() {
-    #expect(DemoFixtures.digests.count >= 3)
+@Test func demoFixturesAreAtLeastFour() {
+    #expect(DemoFixtures.digests.count >= 4)
 }
 
-@Test func demoFixturesIncludeYesNoOpenLoop() {
-    let hasYesNo = DemoFixtures.digests.contains { digest in
-        digest.questions.contains { $0.replyKind == .yesNo }
-    }
-    #expect(hasYesNo)
+@Test func demoFixturesIncludeVariedUrgency() {
+    let urgencies = Set(DemoFixtures.digests.map(\.urgency))
+    #expect(urgencies.count >= 2)
+    // At least one high-urgency to exercise the urgency tint in the cell.
+    #expect(urgencies.contains(.high) || urgencies.contains(.urgent))
 }
 
-@Test func demoFixturesIncludeActionItems() {
-    let hasActions = DemoFixtures.digests.contains { !$0.actionItems.isEmpty }
-    #expect(hasActions)
+@Test func demoFixturesIncludeSectionsAndSources() {
+    let withSections = DemoFixtures.digests.contains { !$0.sections.isEmpty }
+    let withSources  = DemoFixtures.digests.contains { !$0.sources.isEmpty }
+    #expect(withSections)
+    #expect(withSources)
 }
 
-@Test func demoFixturesIncludePureInfoDigest() {
-    let pureInfo = DemoFixtures.digests.contains { digest in
-        digest.questions.isEmpty && digest.actionItems.isEmpty
-    }
-    #expect(pureInfo)
-}
-
-@Test func demoFixturesIncludeParentQuestionId() {
-    let hasParent = DemoFixtures.digests.contains { $0.parentQuestionId != nil }
-    #expect(hasParent)
-}
-
-// MARK: - Intent lexicon sanity
-
-@Test func intentLexiconHasSymbolAndVerbForEveryCase() {
-    for intent in Intent.allCases {
-        #expect(!intent.symbol.isEmpty)
-        #expect(!intent.verb.isEmpty)
+@Test func demoFixturesAllHaveBottomLine() {
+    for d in DemoFixtures.digests {
+        #expect(!d.bottomLine.isEmpty, "digest \(d.id) has empty bottom_line")
     }
 }
 
-// MARK: - Callback shape
-
-@Test func questionAnswerCallbackEncodesCallbackIdAutomatically() throws {
-    let cb = QuestionAnswer(
-        jobId: "job-x",
-        digestId: "dgst-y",
-        questionId: "q1",
-        answer: "yes"
-    )
-    // P0-3: callback_id is digest_id + question_id ONLY — never the answer
-    // value, so the companion dedupes a stray flip from yes→no on the same
-    // question.
-    #expect(cb.callbackId == "dgst-y:q1")
-    let data = try JSONEncoder().encode(cb)
-    let dict = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-    #expect(dict["callback_id"] as? String == "dgst-y:q1")
-    #expect(dict["kind"] as? String == "question_answer")
+@Test func demoFixturesExerciseExtrasPassthrough() {
+    // The market-pulse digest carries an extras key; encoding + decoding it
+    // should preserve the value end-to-end.
+    let pulse = DemoFixtures.marketPulseDigest
+    #expect(pulse.extras["forecast_confidence"] == .string("moderate"))
 }
 
-// MARK: - P0/P1 regression tests (review pass A)
+// MARK: - DigestStore: read/archive state
 
-/// P0-3: a different answer value for the same (digest, question) must
-/// produce the same idempotency key.
-@Test func callbackIdExcludesAnswerValue() {
-    let yes = QuestionAnswer(jobId: "j", digestId: "d", questionId: "q", answer: "yes")
-    let no  = QuestionAnswer(jobId: "j", digestId: "d", questionId: "q", answer: "no")
-    #expect(yes.callbackId == no.callbackId)
-    #expect(yes.callbackId == "d:q")
-}
-
-/// P0-3: a double-tap (or any later write) must be a no-op. First-write-wins.
-@Test func demoAnswerLogIsFirstWriteWins() {
-    // Use a unique key per test run so we don't collide with other tests'
-    // writes to the shared `UserDefaults.standard`.
-    let log = DemoAnswerLog.shared
-    let digestId = "test-fww-\(UUID().uuidString)"
-    let questionId = "q1"
-
-    log.record(digestId: digestId, questionId: questionId, value: "yes")
-    log.record(digestId: digestId, questionId: questionId, value: "no")    // ignored
-    log.record(digestId: digestId, questionId: questionId, value: "yes")   // ignored
-
-    #expect(log.answer(digestId: digestId, questionId: questionId) == "yes")
-    #expect(log.isAnswered(digestId: digestId, questionId: questionId))
-}
-
-/// P1-2: Capabilities decode tolerantly. An unknown route name in
-/// `supported_routes` is silently dropped, not fatal.
-@Test func capabilitiesTolerantToUnknownRoute() throws {
-    let json = """
-    {
-      "schema_version": 1,
-      "companion_version": "0.2.0",
-      "supported_reply_kinds": ["yes_no", "future_kind"],
-      "supported_routes": ["task", "create_watch", "note", "future_route"]
-    }
-    """.data(using: .utf8)!
-
-    let caps = try JSONDecoder().decode(Capabilities.self, from: json)
-    #expect(caps.schemaVersion == 1)
-    // Known reply_kinds pass through; unknowns dropped.
-    #expect(caps.supportedReplyKinds.contains(.yesNo))
-    #expect(caps.supportedReplyKinds.count == 1)
-    // Known routes pass through; unknowns dropped.
-    #expect(caps.supportedRoutes.contains(Intent.task))
-    #expect(caps.supportedRoutes.contains(Intent.note))
-    #expect(caps.supportedRoutes.count == 2)
-}
-
-/// P1: `choice` legs that aren't in `on_answer` get the terminal fallback —
-/// nothing is silently dropped.
-@Test func routeResolverChoiceLegTerminalFallback() {
-    let resolver = RouteResolver(capabilities: DemoCapabilities.standard)
-    let q = Question(
-        id: "q1",
-        text: "Pick one",
-        replyKind: .choice,
-        onAnswer: [
-            "a": OnAnswerLeg(route: TolerantIntent(intent: Intent.task, raw: "task"))
-            // "b" is intentionally absent
-        ],
-        options: ["a", "b"]
-    )
-    let a = resolver.resolve(forAnswer: "a", of: q)
-    let b = resolver.resolve(forAnswer: "b", of: q)
-    #expect(a.intent == Intent.task)
-    #expect(b.intent == Intent.terminal)
-    #expect(b.enabled)                              // terminal is always enabled
-    #expect(b.verb == "Log in inbox")
-}
-
-/// P0-2: answer state is digest-scoped. Answering `q1` in one digest leaves
-/// `q1` in another digest untouched. Demo fixtures reuse "q1" across three
-/// different digests, which is exactly the bleed the old keying caused.
-@Test @MainActor func answerStateIsDigestScoped() {
+@Test @MainActor func newDigestsStartUnread() {
     let store = DigestStore()
-    let harmony = DemoFixtures.harmonyDigest
-    let alberta = DemoFixtures.albertaMoveDigest
-
-    // Sanity: both have a "q1".
-    #expect(harmony.questions.first?.id == "q1")
-    #expect(alberta.questions.first?.id == "q1")
-
-    // Answer harmony.q1 = yes
-    store.answer(harmony.questions[0], in: harmony.id, value: "yes")
-
-    let harmonyState = store.answerState(digestId: harmony.id, questionId: "q1")
-    let albertaState = store.answerState(digestId: alberta.id, questionId: "q1")
-
-    // Harmony's q1 is answered.
-    if case .answered(let v, _) = harmonyState {
-        #expect(v == "yes")
-    } else {
-        Issue.record("Expected harmony q1 to be answered")
+    for d in DemoFixtures.digests {
+        #expect(store.digestState(for: d.id) == .unread)
+        #expect(store.statusDotState(for: d) == .unread)
     }
-    // Alberta's q1 is NOT touched — the old bug bled state across digests.
-    #expect(albertaState == .unanswered)
-    #expect(store.openQuestionCount(for: alberta) == 1)
 }
 
-/// P0-4: `markHandled` decays chip counts via digest state, NOT by writing
-/// fake answer values into `answerStates`. The user shouldn't see "Answered:
-/// handled" on a question they never touched.
-@Test @MainActor func markHandledDoesNotForgeAnswerState() {
+@Test @MainActor func markReadFlipsUnreadToRead() {
     let store = DigestStore()
-    let harmony = DemoFixtures.harmonyDigest
-    store.markHandled(harmony)
-
-    // Chips decay (the inbox cell shows no open chips).
-    #expect(store.openQuestionCount(for: harmony) == 0)
-    #expect(store.openLoopCounts(for: harmony).isEmpty)
-
-    // But the per-question answer state is still `.unanswered` — no fake
-    // "handled" answer was written.
-    let qState = store.answerState(digestId: harmony.id, questionId: "q1")
-    #expect(qState == .unanswered)
+    let d = DemoFixtures.aiNewsDigest
+    store.markRead(d)
+    #expect(store.digestState(for: d.id) == .read)
+    #expect(store.statusDotState(for: d) == .read)
 }
 
-// MARK: - Pass B regression tests
-
-/// P1-5: `.none` is not chip-renderable (no noun, no meaningful chip).
-/// `.terminal`'s noun reads as "item(s) in inbox".
-@Test func intentChipRenderableSkipsNone() {
-    #expect(Intent.none.chipRenderable == false)
-    #expect(Intent.task.chipRenderable)
-    #expect(Intent.note.chipRenderable)
-    #expect(Intent.followup.chipRenderable)
-    #expect(Intent.terminal.chipRenderable)
+@Test @MainActor func markReadIsIdempotent() {
+    let store = DigestStore()
+    let d = DemoFixtures.aiNewsDigest
+    store.markRead(d)
+    store.markRead(d)
+    #expect(store.digestState(for: d.id) == .read)
 }
 
-@Test func terminalIntentNounReadsAsItemInInbox() {
-    #expect(Intent.terminal.noun(pluralFor: 1) == "item in inbox")
-    #expect(Intent.terminal.noun(pluralFor: 2) == "items in inbox")
+@Test @MainActor func archiveHidesDigestFromInbox() {
+    let store = DigestStore()
+    let d = DemoFixtures.aiNewsDigest
+    store.archive(d)
+    let visibleIds = store.sectionedDigests(matching: "")
+        .flatMap(\.digests)
+        .map(\.id)
+    #expect(!visibleIds.contains(d.id))
+    #expect(store.digestState(for: d.id) == .archived)
 }
 
-/// Bug #2: deeplink URL parsing.
+@Test @MainActor func undoArchiveRestoresDigestToRead() {
+    let store = DigestStore()
+    let d = DemoFixtures.aiNewsDigest
+    store.archive(d)
+    let restoredId = store.undoArchive()
+    #expect(restoredId == d.id)
+    #expect(store.digestState(for: d.id) == .read)
+    let visibleIds = store.sectionedDigests(matching: "")
+        .flatMap(\.digests)
+        .map(\.id)
+    #expect(visibleIds.contains(d.id))
+}
+
+@Test @MainActor func undoArchiveWithNoTargetReturnsNil() {
+    let store = DigestStore()
+    #expect(store.undoArchive() == nil)
+}
+
+// MARK: - DigestStore: sort + sectioning
+
+@Test @MainActor func sectionedDigestsSortHighUrgencyFirstWithinSection() {
+    let store = DigestStore()
+    let today = store.sectionedDigests(matching: "")
+        .first(where: { $0.title == "Today" })
+    guard let today else { return }
+    // The "Today" section in fixtures includes ai-news (normal) and weather
+    // (high). High urgency must rank first.
+    if today.digests.count >= 2,
+       let firstUrgency = today.digests.first?.urgency {
+        #expect(firstUrgency >= today.digests[1].urgency)
+    }
+}
+
+@Test @MainActor func searchFiltersByBottomLineAndTitle() {
+    let store = DigestStore()
+    let weatherMatch = store.sectionedDigests(matching: "thunderstorm")
+        .flatMap(\.digests)
+    #expect(weatherMatch.contains { $0.id == "dgst_2026-06-29_weather" })
+    #expect(!weatherMatch.contains { $0.id == "dgst_2026-06-29_ai-news" })
+}
+
+@Test @MainActor func searchAcrossSummary() {
+    let store = DigestStore()
+    // The AI news fixture's summary mentions "safety benchmark".
+    let matches = store.sectionedDigests(matching: "safety benchmark")
+        .flatMap(\.digests)
+    #expect(matches.contains { $0.id == "dgst_2026-06-29_ai-news" })
+}
+
+// MARK: - Deeplink URL parsing
+
 @Test func deepLinkRouterParsesCrowlyDigestURL() {
     #expect(DeepLinkRouter.digestId(from: URL(string: "crowly://digest/abc-123")!) == "abc-123")
     // Trailing slash tolerated.
@@ -537,7 +304,6 @@ import Foundation
     #expect(DeepLinkRouter.digestId(from: URL(string: "crowly://digest/")!) == nil)
 }
 
-/// Bug #2: `handle(_:)` only updates `pendingDigestId` on a valid URL.
 @Test @MainActor func deepLinkRouterHandleIgnoresInvalidURL() {
     let router = DeepLinkRouter()
     router.handle(URL(string: "https://example.com")!)
@@ -547,10 +313,11 @@ import Foundation
     #expect(router.pendingDigestId == "dgst_x")
 }
 
-/// Future-date fixture sanity: Harmony's createdAt must NOT be in the
-/// future for the "today" timestamp to read naturally. (Locked to
-/// 2026-06-29T09:00 EDT after the pass-B fix.)
-@Test func harmonyFixtureIsNotInFuture() {
+// MARK: - Fixture date sanity
+
+/// Demo timestamps must NOT be in the future for the relative-timestamp
+/// formatter to read naturally. Locked to 2026-06-29 in fixtures.
+@Test func aiNewsFixtureIsNotInFuture() {
     let now = CrowlyISO8601.parse("2026-06-29T12:00:00-04:00")!
-    #expect(DemoFixtures.harmonyDigest.createdAt < now)
+    #expect(DemoFixtures.aiNewsDigest.createdAt < now)
 }

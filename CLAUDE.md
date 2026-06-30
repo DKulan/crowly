@@ -1,8 +1,8 @@
 # Crowly
 
-Crowly is a native iOS inbox + interactive widget for recurring AI-agent/automation outputs, with a **job-bound response loop**. Stage: **M1 demo-mode iOS app built and verified on-device** (since 2026-06-29); the design docs remain the source of design intent. The repo/dir is `agent-output-inbox`; the product ships as **Crowly**.
+Crowly is a native iOS **inbox/reader** for recurring AI-agent/automation outputs — AI news summaries, weather, local community updates, scheduled briefings, reminders. Stage: **reader-only pivot** (2026-06-29) — the M1 demo-mode iOS app is built and verified on-device, and the design docs were rewritten away from the earlier "job-bound response loop" framing. The repo/dir is `agent-output-inbox`; the product ships as **Crowly**.
 
-The shape (so you can orient without reading everything): four artifacts — an **iOS app** (App Store) talks directly to a **companion service** (Docker, self-hosted per user on their own VPS) for all content and callbacks; a tiny **push relay** (central, project-run) exists only because APNs can't be self-hosted; an **emitter kit** (helper + Hermes skill) makes agents emit schema-valid digests.
+The shape (so you can orient without reading everything): four artifacts — an **iOS app** (App Store) talks directly to a **companion service** (Docker, self-hosted per user on their own VPS) for all content; a tiny **push relay** (central, project-run) exists only because APNs can't be self-hosted; an **emitter kit** (helper + Hermes skill) makes agents emit schema-valid digests.
 
 ## Working in this repo
 
@@ -10,12 +10,12 @@ Part design docs, part code. The **iOS app** (M1 demo mode) is a real Swift/Swif
 
 **Docs:**
 - `README.md` — pitch, the four-artifact shape, doc map.
-- `docs/concept.md` — positioning, users, competition, risks, resolved/open questions.
-- `docs/schema.md` — the digest + callback contract and its versioning policy. **The contract is the product.**
-- `docs/architecture.md` — the four artifacts; routing, TLS, pairing, push, privacy.
-- `docs/ux.md` — the M1 iOS interaction spec (inbox, digest detail, widget, intent→visual lexicon).
-- `docs/design-system.md` — tokens, components with SwiftUI sketches, FNV-1a job-color algo, the `Intent` lexicon.
-- `docs/validation.md` — the M1 two-week personal test and kill criteria.
+- `docs/concept.md` — positioning (reader-only), users, competition, risks.
+- `docs/schema.md` — the digest contract and its versioning policy. **The contract is the product.**
+- `docs/architecture.md` — the four artifacts; companion ingest/serve, TLS, pairing, urgency-gated push, privacy.
+- `docs/ux.md` — the M1 iOS interaction spec (inbox: read + archive; digest detail: header → bottom line → summary → sections → sources; the read-only widget).
+- `docs/design-system.md` — tokens, components with SwiftUI sketches, FNV-1a job-color algo.
+- `docs/validation.md` — the M1 two-week personal test and reader-shape kill criteria.
 - `docs/roadmap.md` — M1 (single-user) → M2 (public-ready) build order.
 - `docs/naming.md` — why "Crowly"; App Store name not yet claimed in App Store Connect.
 
@@ -24,16 +24,18 @@ Part design docs, part code. The **iOS app** (M1 demo mode) is a real Swift/Swif
 Build & test (iPhone 17 Pro / iOS 26 sim):
 `xcodegen generate && xcodebuild -project Crowly.xcodeproj -scheme Crowly -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build {build|test}`
 
-Not yet verifiable via automation: the **home-screen interactive widget render** (simulator can't add widgets headlessly — needs a manual check).
+Not yet verifiable via automation: the **home-screen widget render** (simulator can't add widgets headlessly — needs a manual check).
 
 ## Invariants (hard-won; changing one is a design decision, not a refactor)
 
-- **Schema routes are intents** (`task | note | followup | none`), never tool names — resolved per-companion by declared capability, with a terminal "stays in the inbox, logged" fallback so nothing is dropped.
-- **The companion executes callbacks**, not the agent. Only `followup` involves the agent, and its result returns as a *new digest* — the loop never leaks back into chat.
-- **The schema is versioned and additive-only.** Never remove or repurpose a field; unknown fields are ignored, not fatal, on both sides.
+- **The schema is content-only.** Title, bottom line, summary, sections, sources, urgency — no routes, no questions, no callbacks. If a digest wants the user to do something, it says so in prose; acting is out of scope for Crowly.
+- **The schema is versioned and additive-only, with unknown fields preserved verbatim.** Never remove or repurpose a field; new fields are optional with safe defaults; the companion stores the whole digest blob so unknown fields survive a round-trip through an older companion.
+- **The companion is ingest + store + serve.** No callback execution, no agent integration beyond receiving digests. (This is the reader-pivot's biggest architectural shift — earlier drafts had the companion executing routes.)
+- **The inbox is read + archive only.** Opening a digest marks it read; archive (with undo) is the only triage move. No "handled," no "mute job" beyond a push-only suppression, no snooze, no intent chips.
 - **Content stays on the user's VPS.** The relay holds only `routing_token → device_token`, never logs pointer metadata, and is **best-effort, never critical-path** (a relay outage degrades to pull, not to broken).
-- **Push is a thin pointer gated on open loops** (an unanswered question/action), not on `urgency` and not carrying digest content.
-- **M1 gates M2.** Don't spec or build public-only work (demo mode, stranger TLS, privacy, relay-for-strangers) as if the two-week validation already passed.
+- **Push is a thin pointer gated on `urgency` ≥ high**, not on `normal`/`low`, and never carries digest content. Normal-urgency digests wait to be pulled (cued by the widget refresh).
+- **The widget is read-only.** Latest digests + unread count; `Link`-deeplink rows; **no `Button(intent:)` anywhere in the widget**. Reading happens in the app, not on the home screen.
+- **M1 gates M2.** Don't spec or build public-only work (demo polish, stranger TLS, privacy, relay-for-strangers) as if the two-week validation already passed.
 - **Secrets** live in the user's `/opt/data/.env` — never in any vault or this repo.
 
 ## Git identity (personal, on a multi-account machine)

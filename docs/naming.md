@@ -4,8 +4,8 @@ The product is **Crowly**. The repo/directory stays `agent-output-inbox` (a plai
 
 ## Why Crowly
 
-- **Coined from "crow."** *To crow* = to announce, loudly and proudly. A crow/rooster heralds the dawn and wakes you to what the day holds — exactly the "what needs my attention from my agents today" widget.
-- The crow/corvid is also the clever **messenger bird**: agents fly out, watch, and come back to report. Crowly carries their reports to you *and* carries your answers back — the job-bound loop that is the product's moat.
+- **Coined from "crow."** *To crow* = to announce, loudly and proudly. A crow/rooster heralds the dawn and wakes you to what the day holds — exactly the "what did my agents bring back for me today" widget.
+- The crow/corvid is also the clever **messenger bird**: agents fly out, watch, and come back to report. Crowly is where those reports land — a dedicated home for what they brought back, on the user's own server.
 - **Warm, concrete, one breath to say, easy to spell.** Reads as a friendly coinage in the well-worn concrete-word app-naming tradition.
 - **Near-empty App Store namespace** — the cleanest availability of every candidate screened.
 

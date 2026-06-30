@@ -1,14 +1,11 @@
-// DigestCell — the inbox row. Composes JobColorStripe + title + status dot +
-// bottom_line + intent chips. Per docs/design-system.md §2.7.
-//
-// Must-build #1 of the triad.
+// DigestCell — the inbox row. Composes JobColorStripe + title + status dot
+// (unread cue) + relative timestamp + bottom_line. A reader-only cell: no
+// chips, no open-loop counts, no interactivity.
 
 import SwiftUI
 
 struct DigestCell: View {
     let digest: Digest
-    let questionOpenCount: Int                 // questions aren't an Intent
-    let openLoopCounts: [Intent: Int]
     let state: StatusDot.State
 
     var body: some View {
@@ -40,31 +37,13 @@ struct DigestCell: View {
                         .foregroundStyle(.secondary)
                 }
 
-                // Bottom line
+                // Bottom line — the reason the digest exists.
                 if !digest.bottomLine.isEmpty {
                     Text(digest.bottomLine)
                         .font(.crowlyCellBody)
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .truncationMode(.tail)
-                }
-
-                // Intent chips strip — questions first, then task/followup/note.
-                // P1-5: skip non-renderable intents (Intent.none has no noun
-                // and shouldn't pollute the chip row or a11y label).
-                if hasAnyOpenChips {
-                    HStack(spacing: Space.s) {
-                        if questionOpenCount > 0 {
-                            IntentChip(mode: .question, openCount: questionOpenCount)
-                        }
-                        ForEach(Intent.cellOrdering, id: \.self) { intent in
-                            if intent.chipRenderable,
-                               let count = openLoopCounts[intent], count > 0 {
-                                IntentChip(mode: .intent(intent), openCount: count)
-                            }
-                        }
-                    }
-                    .padding(.top, Space.xs)
                 }
             }
             .padding(.vertical, Space.s)
@@ -78,36 +57,14 @@ struct DigestCell: View {
         .accessibilityLabel(a11yLabel)
     }
 
-    private var hasAnyOpenChips: Bool {
-        if questionOpenCount > 0 { return true }
-        // P1-5: only count chips that will actually render.
-        return openLoopCounts.contains { intent, count in
-            count > 0 && intent.chipRenderable
-        }
-    }
-
     private var a11yLabel: String {
         var parts = [digest.title]
-        switch state {
-        case .unread:   parts.append("Unread")
-        case .readOpen: parts.append("Read")
-        case .handled:  parts.append("Handled")
-        case .archived: break
-        }
+        if state == .unread { parts.append("Unread") }
         if digest.urgency == .high || digest.urgency == .urgent {
             parts.append("\(digest.urgency.rawValue) priority")
         }
         if !digest.bottomLine.isEmpty {
             parts.append(digest.bottomLine)
-        }
-        if questionOpenCount > 0 {
-            parts.append(questionOpenCount == 1 ? "1 open question" : "\(questionOpenCount) open questions")
-        }
-        for intent in Intent.cellOrdering {
-            if intent.chipRenderable,
-               let count = openLoopCounts[intent], count > 0 {
-                parts.append("\(count) open \(intent.noun(pluralFor: count))")
-            }
         }
         return parts.joined(separator: ". ")
     }

@@ -1,6 +1,6 @@
-// InboxView — the root screen. Sectioned list of digests; pull-to-refresh;
-// swipe-to-handle / archive / mute; demo-mode banner pinned to the safe area.
-// Per docs/ux.md §Inbox and docs/design-system.md §3.1.
+// InboxView — the root reader screen. Sectioned list of digests; pull-to-
+// refresh; swipe-to-archive (with undo); demo-mode banner pinned to the safe
+// area.
 
 import SwiftUI
 
@@ -9,8 +9,12 @@ struct InboxView: View {
     @Environment(DeepLinkRouter.self) private var router
     @State private var query: String = ""
     /// Owns the navigation path so `.onOpenURL` can push a digest detail
-    /// from outside the stack. Bug #2 fix from review pass B.
+    /// from outside the stack.
     @State private var path: [String] = []
+    /// Undo target for the most recent archive. Synced from `store`
+    /// whenever the swipe action fires; cleared after the toast times out.
+    @State private var undoArchiveId: String?
+    @State private var undoTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -21,8 +25,6 @@ struct InboxView: View {
                             NavigationLink(value: digest.id) {
                                 DigestCell(
                                     digest: digest,
-                                    questionOpenCount: store.openQuestionCount(for: digest),
-                                    openLoopCounts: store.openLoopCounts(for: digest),
                                     state: store.statusDotState(for: digest)
                                 )
                             }
@@ -32,28 +34,13 @@ struct InboxView: View {
                             ))
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
-                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button {
-                                    store.markHandled(digest)
-                                } label: {
-                                    Label("Mark handled", systemImage: "checkmark.circle")
-                                }
-                                .tint(.green)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button {
-                                    store.archive(digest)
+                                    archive(digest)
                                 } label: {
                                     Label("Archive", systemImage: "tray.and.arrow.down")
                                 }
                                 .tint(.gray)
-
-                                Button {
-                                    store.muteJob(digest.jobId)
-                                } label: {
-                                    Label("Mute job", systemImage: "bell.slash")
-                                }
-                                .tint(.orange)
                             }
                         }
                     } header: {
@@ -75,8 +62,8 @@ struct InboxView: View {
                 }
             }
             .searchable(text: $query)
-            // P1-8: minimize the search bar so it stays out of the way on
-            // long scrolls. Matches the design-system.md spec.
+            // Minimize the search bar so it stays out of the way on long
+            // scrolls. Matches the design-system spec.
             .searchToolbarBehavior(.minimize)
             .refreshable { await store.refresh() }
             .safeAreaInset(edge: .top) {
@@ -86,6 +73,18 @@ struct InboxView: View {
                         .padding(.vertical, Space.s)
                 }
             }
+            .safeAreaInset(edge: .bottom) {
+                if undoArchiveId != nil {
+                    UndoArchiveToast {
+                        store.undoArchive()
+                        cancelUndoToast()
+                    }
+                    .padding(.horizontal, Space.m)
+                    .padding(.bottom, Space.s)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.snappy, value: undoArchiveId)
             .overlay {
                 if store.isEmpty(forQuery: query) {
                     ContentUnavailableView(
@@ -93,16 +92,16 @@ struct InboxView: View {
                         systemImage: "tray",
                         description: Text(
                             store.isInDemoMode
-                                ? "Send your first one from Hermes."
+                                ? "Demo digests will appear here."
                                 : "Try a different search."
                         )
                     )
                 }
             }
-            // Bug #2: when a deeplink arrives, push the digest detail.
-            // We pop-to-root first so a stale stack doesn't shadow the
-            // requested digest. `pendingDigestId` clears after handling so
-            // the same link can fire again later.
+            // When a deeplink arrives, push the digest detail. Pop-to-root
+            // first so a stale stack doesn't shadow the requested digest.
+            // `pendingDigestId` clears after handling so the same link can
+            // fire again later.
             .onChange(of: router.pendingDigestId) { _, newId in
                 guard let id = newId else { return }
                 if store.digest(byId: id) != nil {
@@ -111,6 +110,52 @@ struct InboxView: View {
                 router.pendingDigestId = nil
             }
         }
+    }
+
+    private func archive(_ digest: Digest) {
+        store.archive(digest)
+        undoArchiveId = digest.id
+        undoTask?.cancel()
+        undoTask = Task { @MainActor in
+            // 4-second undo window — long enough to react, short enough not
+            // to litter the bottom of the screen.
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if !Task.isCancelled { undoArchiveId = nil }
+        }
+    }
+
+    private func cancelUndoToast() {
+        undoArchiveId = nil
+        undoTask?.cancel()
+        undoTask = nil
+    }
+}
+
+// MARK: - Undo toast
+
+private struct UndoArchiveToast: View {
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack(spacing: Space.s) {
+            Image(systemName: "tray.and.arrow.down")
+                .foregroundStyle(.secondary)
+            Text("Archived")
+                .font(.subheadline)
+            Spacer(minLength: 0)
+            Button("Undo", action: onUndo)
+                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.glass)               // [iOS 26]
+        }
+        .padding(.horizontal, Space.m)
+        .padding(.vertical, Space.s)
+        .background(
+            Capsule().fill(Color.crowlySurface)
+        )
+        .overlay(
+            Capsule().strokeBorder(.secondary.opacity(0.15), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .combine)
     }
 }
 

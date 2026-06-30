@@ -6,9 +6,8 @@
 // dropping them. This lets a field a newer app understands survive a round-trip
 // through an older one.
 //
-// Used by `Digest.extras`, `Question.extras`, etc. — anywhere the schema says
-// "additive-only, unknown fields ignored, not fatal." Decoding never throws on
-// unknown keys.
+// Used by `Digest.extras` — anywhere the schema says "additive-only,
+// unknown fields ignored, not fatal." Decoding never throws on unknown keys.
 
 import Foundation
 

@@ -4,11 +4,11 @@ The M1 app's interaction design. Grounded in Apple's WidgetKit / App Intents / S
 
 ## North stars (derived from the invariants)
 
-- **The card is a question, not a story.** Every cell answers "does this need me?" before "what does it say." Open loops are the spine of the UI; pure-info digests are second-class.
-- **Routes are intents, not tools.** A button reads "Add as task," never "Add to Todoist," and only renders if `GET /capabilities` resolves that intent. **No dead affordances, ever.**
-- **The widget is the demo.** It must answer a `yes_no` in one tap from the home screen without launching the app. Everything else flows from that.
-- **Companion-version honesty.** Schema fields the app doesn't know are skipped; `reply_kind`s the companion can't handle are hidden, not broken. The UI never lies about what was executed.
-- **Liquid Glass for chrome, not content.** Toolbars, widget surfaces, and answer buttons get `.glass`/`.glassProminent`; cards stay opaque so digest text stays legible against any wallpaper.
+- **The card is a one-glance read, not a story.** Every cell answers "what did this agent bring back?" in under a second: source, when, the `bottom_line`. Detail is one tap away for the prose.
+- **Read on open; archive when done.** Two states, two gestures. No "handled," no "muted job," no triage tax. The inbox is a reading queue, not a control panel.
+- **The widget is the demo.** It must show the most recent digest(s) on the home screen and deeplink straight into the app — no buttons, no answers, no chrome beyond the digest itself.
+- **Companion-version honesty.** Schema fields the app doesn't know are skipped, not rendered as garbage. The UI never lies about what was stored.
+- **Liquid Glass for chrome, not content.** Toolbars and the widget surface get `.glass`/`.glassProminent`; cards stay opaque so digest text stays legible against any wallpaper.
 
 ## Information architecture
 
@@ -17,156 +17,129 @@ One `NavigationStack` rooted on **Inbox** is enough for M1. (A `TabView` — Inb
 ```
 RootNavigationStack
 └── InboxView (root)                 list of digests, grouped by date
-    ├── DigestDetailView             bound answers + actions live here
-    │   └── FreeTextAnswerSheet       .sheet, when reply_kind = free_text
-    ├── JobView                       inbox filtered to one job_id
-    ├── SettingsView                  pairing, capabilities, disconnect
-    │   └── PairCompanionView          .fullScreenCover camera scanner
-    └── DemoModeBanner                .safeAreaInset(.top), dismissable
+    ├── DigestDetailView             header → bottom line → summary/sections → sources
+    ├── JobView                      inbox filtered to one job_id
+    ├── SettingsView                 pairing, disconnect, demo toggle
+    │   └── PairCompanionView         .fullScreenCover camera scanner
+    └── DemoModeBanner               .safeAreaInset(.top), dismissable
 
 Home screen:
 └── CrowlyWidget (small / medium / large)
-    ├── Timeline: open-loop digests, ranked by urgency
-    ├── Tap row     → deeplink crowly://digest/<id>
-    └── Tap answer  → AppIntent (background) → reload timeline
+    ├── Timeline: latest digests, by created_at desc
+    ├── Tap row → deeplink crowly://digest/<id>
+    └── No buttons — pure reader surface
 ```
 
 Object model:
 
 - **Digest** = one card; identity is `digest.id`.
 - **Job** = bucket by `job_id`; the secondary navigation axis (filter, group header).
-- **OpenLoop** = an `action_item` or `question` not yet handled/answered. **The widget timeline is open loops, not digests.**
-- **State** (read/handled/archived) is computed locally for optimistic UI but mirrored to the companion via a `state_change` callback. The companion is source of truth; the local store is a cache for offline read.
+- **State** (unread / read / archived) is computed locally for optimistic UI but mirrored to the companion via a small `state_change` write. The companion is source of truth; the local store is a cache for offline read.
 
 ## Inbox screen
 
 Sectioned `List`, sticky **date** headers (Today / Yesterday / This week / Earlier), pull-to-refresh, `.searchable($query).searchToolbarBehavior(.minimize)`. Job grouping is a *filter*, not the default — chronological scan wins for <10 active jobs.
 
-**Sort:** open-loop digests first (by `urgency` desc, then `created_at` desc), then pure-info digests below a subtle divider — the visual hierarchy matches the alerting hierarchy (push is gated on open loops).
+**Sort:** `created_at` desc within each date section. `urgency` `high`/`urgent` get a small leading exclamation glyph but do **not** reorder — the inbox is a chronological reading queue. (Urgency drives push and widget surfacing, not list order.)
 
 **Cell anatomy:**
 
 ```
 ┌──────────────────────────────────────────────┐
 │ [job-glyph]  Harmony Community Digest        │  .headline; 4pt job color stripe on leading edge
-│              Sun · 7:00 PM             ●     │  .footnote .secondary; status dot trailing
+│              Sun · 7:00 PM             ●     │  .footnote .secondary; unread dot trailing
 │                                              │
-│  No urgent action items. County bylaws       │  bottom_line, .body, 2 lines max, .tail truncation
-│  under review remain worth watching.         │
-│                                              │
-│  ● 1 question   ● 1 task                     │  intent chips — only if open; .caption2
+│  No urgent updates this week. County         │  bottom_line, .body, 2 lines max, .tail truncation
+│  bylaws under review remain worth watching.  │
 └──────────────────────────────────────────────┘
 ```
 
-- **Status dot**, four states, never a badge stack: unread (filled accent) · read-but-open (ring accent) · handled (filled secondary) · archived (hidden; lives in archive section).
-- **Intent chips** are capsule `Label`s with SF Symbols, each a count of *open* items of that intent. They vanish when the count hits zero — a satisfying "did the work" decay.
+- **Unread dot**, two states: unread (filled accent) and read (no dot). Archived digests live in their own section and don't show a dot at all. **Three visual states, two states of mind: unread vs. everything else.**
 - **Job color stripe** is derived deterministically from `job_id` (hash → fixed S/L HSL). Scannable by source with no per-job config in M1. (User-configurable colors: M2.)
-- **Swipe actions:** leading "Mark handled" (green); trailing "Archive" (gray) and "Mute job" (orange). All fire `state_change`; archived/muted filter out optimistically with an undo. **Mute suppresses push only** — the inbox stays a durable archive, never a filter.
+- **Swipe actions:** trailing "Archive" (gray) is the only swipe. Archive fires a `state_change`, removes the row optimistically, and shows an undo toast for ~5 seconds. **There is no leading swipe.** (No "mark handled," no "mute job" — those were artifacts of the old loop model.)
+- **Tap a row** marks it read (optimistically + `state_change`) and pushes the detail view. The unread dot fades immediately; if the network write fails, the dot stays and a quiet retry banner appears at the top.
 
 **Empty / error states** use `ContentUnavailableView`, never a blank screen:
 - New pairing → "No digests yet. Send your first one from Hermes." + "Show example" (Demo Mode).
-- `/capabilities` unreachable → "Can't reach your inbox service" + retry, with last-cached digests still visible behind the banner.
-- Companion older than `N-1` → pinned "Update your inbox service" banner, no destructive action.
+- Companion unreachable → "Can't reach your inbox service" + retry, with last-cached digests still visible behind the banner.
+- Companion schema older than `N-1` → pinned "Update your inbox service" banner, no destructive action.
 
 ## Digest detail screen
 
-Order: **Header → Open loops → Body → Sources → Footer actions.** Open loops sit *above* the body — they're the reason the digest was opened.
+Order: **Header → Bottom line → Summary → Sections → Sources → Footer.** No open-loop section, no answer buttons, no action items — just the digest, read top to bottom.
 
 ```
   Harmony Community Digest                       .navigationTitle (large)
   Sun, Jun 29 · 7:00 PM · low urgency            .navigationSubtitle
 
   Bottom line
-  No urgent action items. County bylaws under    callout block, subtle .background fill
-  review remain worth watching.
+  No urgent updates this week. County            callout block, subtle accent-tinted fill
+  bylaws under review remain worth watching.
 
-  Questions  (1 open)
-  ?  Should I start tracking the off-site levy
-     bylaw as a recurring watch?
-       [   Yes   ]    [   No   ]                  .glassProminent / .glass capsules
-       Will create a Todoist task                 resolution preview, .caption .secondary
+  Summary
+  Full prose summary of the digest...            .body
 
-  Action items  (1)
-  ☐  Confirm Interlane EV9 drop-off window
-     project: Alberta Move · @hermes @vendor      hints as chips
-                            [ Add as task ]  ⋯    primary verb; ⋯ for overrides
-
-  Summary …  Bylaw watch …                        schema sections, .body
+  Bylaw watch                                    .title2 .semibold (section heading)
+  Regional off-site levy updates remain
+  under review.
 
   Sources
     ↗ Rocky View County Bylaws Under Review        Link → SFSafariViewController
 
   ── bottom bar (.bottomBar, system glass) ──
-   [ Mark handled ]   [ Archive ]            ⋯
+   [ Archive ]                              ⋯
 ```
 
-**Answering, by `reply_kind`:**
+- The detail opens with the **bottom line** in a tinted callout — this is the one piece of prose that earns top-of-screen real estate because it's the digest's own TL;DR.
+- **Summary and sections render in the order the emitter sent them.** No reordering, no priority weighting — the agent decided what matters; the reader respects that.
+- **Sources** are tappable rows that open `SFSafariViewController` in-app (never a `WKWebView`, never an external Safari kick-out).
+- **Bottom bar** has **Archive** as the primary action and a `⋯` menu for "Mute job" (suppresses *push* for that `job_id`; the digests still arrive and land in the inbox) and "Open as JSON" (debug surface, hidden in non-debug builds).
+- **No "mark handled" button.** Opening the digest marks it read; that's the only read-state transition the user needs.
 
-- **`yes_no`** — tap fires the `AppIntent`; optimistic UI: tapped button fills+disables, sibling hides, an inline `Label("Answered: yes — task created", systemImage: "checkmark.circle.fill")` slides in. POST failure flips the row to a soft "Tap to retry," never a destructive alert.
-- **`choice`** — vertical `.glass` buttons, one per option, with each option's resolved route shown beneath as caption (consequence before tap). Falls back to a `Picker` at >4 options.
-- **`free_text`** — button reads "Reply…", opens a `.sheet` with `TextEditor` and a banner showing the resolved route ("This reply will be saved as a note").
+## Home-screen widget
 
-**Acting on `action_items`:** primary button is the resolved intent verb ("Add as task" / "Save as note" / "Send to Hermes" / "Log in inbox"). The terminal **"Log in inbox"** fallback is the *same shape* as the others — nothing is silently dropped and the user isn't punished for missing integrations. `⋯` opens overrides (project/due/labels prefilled from `hints`); it is **hidden, not greyed**, when the companion lacks that capability.
+Fed by `GET /summary` (cheap; returns latest few digests + unread count). Timeline reloads on push (relay → APNs → `reloadTimelines`), with a **~15-minute reload floor** as the relay-outage degradation path (see [`architecture.md`](architecture.md) → Push).
 
-**Resolution preview** ("Will create a Todoist task") is **not optional** — it's the affordance that earns trust in the bound loop, computed app-side from `on_answer[value].route` + `/capabilities`, so it shows the *real* resolution ("Will save as note (Obsidian unavailable, falling back to local)"). One `RouteResolver` view-model returns `(verb, sublabel, sfSymbol, enabled)` for every button in the app — this is what guarantees no dead buttons.
+**Every widget size is read-only — tap deeplinks into the app; nothing else.** This is the reader-pivot's biggest UX move: no buttons in the widget, no answer affordances, no action verbs. The widget's job is "here's what just arrived; tap to read it."
 
-## Interactive widget
+**`.systemSmall`** — at-a-glance: app glyph + **unread count** in the top-right; **latest digest's `bottom_line`** (3 lines max) below. Tapping anywhere deeplinks to `crowly://digest/<latest-id>`. If no unread, shows "All clear" + the latest read digest's `bottom_line` in `.secondary`.
 
-Fed by `GET /summary` (cheap, binding-carrying). Timeline reloads on push (relay → APNs → `reloadTimelines`), with a **~15-minute reload floor** as the relay-outage degradation path (see [`architecture.md`](architecture.md) → Push).
+**`.systemMedium`** — the default and the App Store screenshot: header row with app glyph + unread count, then **the top 2–3 most-recent digests** as compact rows. Each row shows the leading job color stripe, the source (`title`), the relative timestamp, and the `bottom_line` (1 line, tail-truncated). Tapping a row deeplinks to that digest.
 
-**`.systemSmall`** — "what needs me today": logo + total open-loop count, the top-priority open question (2 lines), and `[ Yes ] [ No ]`. If the top loop is an action, shows `[ Do it ]` + `[ Open ]`. No open loops → latest `bottom_line` + glyph.
-
-**`.systemMedium`** — the default and the App Store screenshot: up to **2 open loops**, each with inline answer buttons and a leading job color stripe.
-
-**`.systemLarge`** — 4–5 loops + a "View all 12 →" footer deeplinking to the inbox.
+**`.systemLarge`** — same shape as medium, **4–5 rows** + a "View all →" footer that deeplinks to the inbox root. Cut-target if M1 slips; small + medium covers the demo.
 
 WidgetKit specifics that matter:
 
-- `GlassEffectContainer` around the button cluster; `.glassProminent` on the affirmative, `.glass` on the dismissive — monochromes cleanly in tinted (Accented) mode.
-- `widgetAccentable()` on the status dot + count badge; `.containerBackground(for: .widget) { Color.clear }` so the system renders glass beneath.
-- `widgetURL` per row deeplinks `crowly://digest/<id>`; buttons use `Button(intent:)` so the action runs **without launching the app**.
-- `AnswerQuestionIntent` is `[.background, .foreground(.dynamic)]` — silent+fast by default; may request foreground only when the resolved route is `followup` (queues an agent run). After it runs, the intent calls `WidgetCenter.shared.reloadTimelines(ofKind:)` so the row vanishes within a beat.
+- `.containerBackground(for: .widget) { Color.clear }` so the system renders glass beneath the rows.
+- `widgetAccentable()` on the app glyph, count badge, and job stripes — these go monochrome white in Accented mode while the body text tints cleanly.
+- `widgetURL` per row deeplinks `crowly://digest/<id>`. The whole widget is also wrapped in a `widgetURL` for the bottom-line surface so a tap anywhere on the small widget Just Works.
 
 Constraints respected:
 
-- **One tap = one answer = no confirmation.** The companion dedupes on a client-minted `callback_id` (e.g. `digest_id + question_id`), so a double-tap is a no-op, not a duplicate.
-- **No content beyond `bottom_line` / question text** — the widget is a pointer, per the invariant.
+- **No buttons.** `Button(intent:)` is not used anywhere in the widget — there's no action to take. (This is a deliberate departure from the old loop-widget design.)
+- **No content beyond `title` + `bottom_line` + timestamp** — the widget is a pointer to the digest, not the digest itself.
 - **No widget login state** — the widget reads a shared App Group container the app populates; unpaired → "Open Crowly to pair," never blank/error.
-
-## Intent → visual lexicon
-
-The same mapping in cells, detail, and widget rows — consistency is the point:
-
-| Intent     | SF Symbol             | Button verb     | Capability-aware? |
-|------------|-----------------------|-----------------|-------------------|
-| `task`     | `checklist`           | "Add as task"   | yes |
-| `note`     | `note.text`           | "Save as note"  | yes |
-| `followup` | `arrow.uturn.forward` | "Send to Hermes"| yes — hidden if no Hermes intake |
-| `none`     | —                     | "Dismiss"       | always |
-| terminal   | `tray.fill`           | "Log in inbox"  | always (the fallback) |
-
-**Open-loop visual language:** an open question = a `?` in an accent circle; an open action = an unchecked `circle`; resolved = the same glyph, filled, `.secondary`. The shape stays put — only the fill changes — so "did the work" decay is visible without redrawing the layout.
 
 ## Onboarding (≈60 seconds)
 
-1. Launch → **Demo Mode** by default (3 canned digests, one open question, one action; tapping "Yes" renders the bound loop entirely client-side). Reachable afterward from Settings → "Show demo digests" (for App Review).
+1. Launch → **Demo Mode** by default (3 canned digests of varied urgencies and shapes, fully client-side). Reachable afterward from Settings → "Show demo digests" (for App Review).
 2. Pinned `.safeAreaInset(.top)` banner "Connect your Crowly inbox →" → **PairCompanionView**.
-3. Pair: camera scanner reads the QR `{companion_url, pairing_token, …}`, validates by hitting `GET /capabilities` over HTTPS, stores credentials in the **Keychain**, hands the companion the `routing_token`, dismisses with success. Manual "Enter URL and token instead" fallback for the QR-averse and as a Reviewer escape valve.
+3. Pair: camera scanner reads the QR `{companion_url, pairing_token, …}`, validates by hitting the companion over HTTPS, stores credentials in the **Keychain**, hands the companion the `routing_token`, dismisses with success. Manual "Enter URL and token instead" fallback for the QR-averse and as a Reviewer escape valve.
 4. First real digest pulled → demo banner disappears. That transition is the "aha."
 
 (Pairing wire-protocol detail lives in [`architecture.md`](architecture.md) → Pairing.)
 
 ## iOS specifics
 
-**Use:** `AppIntent` for every action (inbox swipe, detail buttons, widget buttons) — one intent struct, three call sites, and free Siri/Shortcuts in M2; App Group container for the widget's small state + a JSON/SwiftData digest cache; `SFSafariViewController` for external sources (never an in-app `WKWebView`); `UNNotificationCategory` with one "Mark handled" action so the loop is answerable from the notification too (three answer surfaces — notification, widget, app — for the same loop); `ContentUnavailableView` for every empty/error state.
+**Use:** App Group container for the widget's small state + a JSON/SwiftData digest cache; `SFSafariViewController` for external sources (never an in-app `WKWebView`); `ContentUnavailableView` for every empty/error state; `UNNotificationCategory` with a single "Archive" action so a notification can be dismissed-with-state without opening the app.
 
-**Avoid in M1:** custom navigation/zoom transitions; **Lock Screen interactive widgets** (`.accessoryRectangular` can't host buttons — defer); `UNTextInputNotificationAction` for `free_text` from the lock screen (rough keyboard UX, same data path as the in-app sheet); background URL session for callbacks (synchronous POST + retry-on-foreground is enough).
+**Avoid in M1:** custom navigation/zoom transitions; **Lock Screen widgets** (defer — they add platform surface without changing the read flow); background URL session for state writes (synchronous POST + retry-on-foreground is enough); `Button(intent:)` widgets (no action surface in a reader).
 
 ## Cut order if M1 slips
 
 1. Spotlight indexing / `.userActivity` → M2.
 2. Large widget — small + medium covers the demo.
-3. Override `⋯` on action items — overrides via deeplink-to-app only; widget never overrides.
-4. `choice`/`free_text` **in the widget** — `yes_no`-only on the widget; other kinds live in the app's detail sheet. (`/capabilities` declares supported reply_kinds, so this degrades cleanly.)
+3. `⋯` menu in detail bottom bar (Mute job, Open as JSON) — Archive alone is enough for M1.
+4. Search — chronological scan covers <50 digests; revisit if the inbox grows.
 
-**Keep no matter what — this triad *is* the M1 product:** the inbox cell with open-loop chips · the detail view with bound `yes_no` answers · the medium widget with two open loops + `yes_no` buttons.
+**Keep no matter what — this triad *is* the M1 product:** the inbox cell with date sectioning and unread dot · the detail view rendering header → bottom line → summary → sections → sources · the medium widget with 2–3 latest digests and an unread count.
