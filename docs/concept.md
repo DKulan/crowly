@@ -64,7 +64,7 @@ Closest neighbours are AI readers — but they curate feeds for you (one vendor 
 - Concrete tools or intents in the schema? → **Neither.** The schema describes content shape only (title, bottom line, summary, sections, sources). No routes, no callbacks, no per-tool fields.
 - Who reads digests, who acts on them? → **The user reads. Acting is out of scope for Crowly** — if a digest tells you to do something, you do it wherever you already do things. Crowly's job ends at "you saw it."
 - Single-user or public? → **Public**, for Hermes self-hosters, via the companion model (not a hosted SaaS).
-- What's the cue? → **The home-screen widget** (refreshing on its own timeline) is the steady-state surface; the app icon is the backstop. The app is pull-only — opening it refreshes the inbox.
+- What's the cue? → **The home-screen widget** (refreshing on its own timeline) is the steady-state surface; the app icon is the backstop. The app refreshes itself — it pulls on open and polls on an interval while foregrounded, so the inbox stays current without a manual pull.
 
 ## Still-open questions
 

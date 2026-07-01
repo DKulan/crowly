@@ -50,6 +50,12 @@ final class DigestStore {
     /// error path. Cleared on the next successful refresh.
     private(set) var lastRefreshError: CompanionError?
 
+    /// Guards against overlapping refreshes. The foreground poll and a
+    /// manual pull-to-refresh can both call `refresh()`; without this they
+    /// could fire two concurrent `/list` calls and let a stale snapshot
+    /// clobber a fresher one.
+    private var isRefreshing = false
+
     // MARK: - Dependencies
 
     /// Source of credentials. Tests swap in `InMemoryCredentialStore`.
@@ -237,6 +243,12 @@ final class DigestStore {
             try? await Task.sleep(nanoseconds: 200_000_000)
             return
         }
+        // Drop the call if one is already in flight (e.g. the interval poll
+        // fires while a manual pull is still awaiting). The in-flight refresh
+        // will deliver the freshest snapshot.
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
         do {
             let envelopes = try await client.list()
             apply(envelopes: envelopes)

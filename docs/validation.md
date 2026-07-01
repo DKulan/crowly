@@ -20,7 +20,7 @@ The validation surface is **M1** — the single-user native slice (`docs/roadmap
 **Do not run Telegram as a parallel full-content channel during the test.** The earlier "keep Telegram live, apples-to-apples" framing was a trap: Telegram *pushes the full digest to the lock screen*, so the user reads it there and never opens a silent second app to re-read it. That isn't apples-to-apples — it's home-field advantage for the incumbent, and it guarantees a null result while leaving Crowly (which lives only in the app + widget) untested.
 
 Instead:
-- **The app is the sole surface for content.** Crowly sends no notifications in the MVP — the app and the home-screen widget are the only places digests appear. The widget refreshes on its own ~15-minute floor; the app refreshes on open. That's it.
+- **The app is the sole surface for content.** Crowly sends no notifications in the MVP — the app and the home-screen widget are the only places digests appear. The widget refreshes on its own ~15-minute floor; the app refreshes itself while open (on foreground + interval poll). That's it.
 - Telegram may keep firing for *unrelated* Hermes traffic, but the digests under test go to the app, not to a parallel full-content Telegram message.
 
 ### Seed the habit before measuring it

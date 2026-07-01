@@ -76,7 +76,7 @@ The companion exposes `GET /pair`, which returns `{companion_url, pairing_token}
 
 > **Today: manual entry is wired end-to-end and validate-before-persist works.** QR scan is stubbed — the entry point in `PairCompanionView` is reserved (`showQRScanner`) but `AVFoundation` integration is M2 (`docs/roadmap.md` § M2).
 
-*Verify:* app leaves Demo Mode after pairing; pull-to-refresh shows an **empty real inbox** ("No digests yet. Send your first one from Hermes." per `docs/ux.md`); the inline error path surfaces typed errors (unreachable / unauthorized / decode) without crashing back to demo.
+*Verify:* app leaves Demo Mode after pairing; the inbox auto-refreshes (on foreground; pull-to-refresh also forces it) to an **empty real inbox** ("No digests yet. Send your first one from Hermes." per `docs/ux.md`); the inline error path surfaces typed errors (unreachable / unauthorized / decode) without crashing back to demo.
 
 *Common failures:*
 - **Clock skew** — pairing token rejected if the phone or VPS clock is far off. Sync NTP on the VPS.
@@ -103,7 +103,7 @@ A Hermes cron pipes its content JSON to the helper:
 hermes-run morning-briefing | python3 /opt/crowly/crowly_emit.py
 ```
 
-*Verify:* helper exits `0`; the digest appears in the app's inbox on pull-to-refresh and in the widget's "latest" row.
+*Verify:* helper exits `0`; the digest appears in the app's inbox on the next auto-refresh (within ~60s while foregrounded, or immediately via pull-to-refresh) and in the widget's "latest" row.
 
 *Common failures:*
 - **Exit `2` (validation error)** — required field missing or `urgency` not in `low|normal|high|urgent`. The error names the field; fix the LLM prompt, not the helper.
@@ -119,7 +119,7 @@ This is what the two-week test measures (`docs/validation.md`):
 
 - Hermes cron emits → companion stores → app/widget pulls → user reads in the app → archives.
 - Opening a digest marks it read; archive (with undo) is the only triage move (no "handled," no snooze — `CLAUDE.md` § Invariants).
-- The home-screen widget is the steady-state cue: latest digests + unread count, `Link`-deeplink rows, **read-only** (no `Button(intent:)`). The widget refreshes itself on its `TimelineProvider` (~15-minute floor); the app refreshes on open or pull-to-refresh.
+- The home-screen widget is the steady-state cue: latest digests + unread count, `Link`-deeplink rows, **read-only** (no `Button(intent:)`). The widget refreshes itself on its `TimelineProvider` (~15-minute floor); the app auto-refreshes while open (foreground + ~60s interval poll), with pull-to-refresh as a manual override.
 
 *Verify:* most days, the user opens the app **unprompted** after the seeding period; archive is the natural end-state, not a guilt pile (`docs/validation.md` § Success criteria).
 

@@ -38,7 +38,7 @@ Object model:
 
 ## Inbox screen
 
-Sectioned `List`, sticky **date** headers (Today / Yesterday / This week / Earlier), pull-to-refresh, `.searchable($query).searchToolbarBehavior(.minimize)`. Job grouping is a *filter*, not the default — chronological scan wins for <10 active jobs.
+Sectioned `List`, sticky **date** headers (Today / Yesterday / This week / Earlier), auto-refresh (foreground + interval poll while open; pull-to-refresh kept as a manual override), `.searchable($query).searchToolbarBehavior(.minimize)`. Job grouping is a *filter*, not the default — chronological scan wins for <10 active jobs.
 
 **Sort:** `created_at` desc within each date section. `urgency` `high`/`urgent` get a small leading exclamation glyph but do **not** reorder — the inbox is a chronological reading queue. (Urgency drives widget surfacing, not list order.)
 

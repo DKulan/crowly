@@ -10,18 +10,43 @@ struct ContentView: View {
     /// automatically.
     @State private var store = DigestStore(credentials: KeychainStore())
 
+    /// How often to re-pull `/list` while the app is foregrounded. The
+    /// companion is a personal VPS serving one reader, so a gentle poll is
+    /// cheap; digests arrive on cron schedules (minutes-to-hours), not
+    /// live, so a minute of latency is imperceptible.
+    private static let pollInterval: Duration = .seconds(60)
+
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
         InboxView()
             .environment(store)
-            .task {
-                // If we launched into live mode (already paired), pull a
-                // fresh /list so the inbox doesn't sit empty before the
-                // user pulls-to-refresh.
-                if !store.isInDemoMode {
+            // Auto-refresh replaces pull-to-refresh: refresh whenever the
+            // app becomes active (launch or foreground) and then poll on an
+            // interval. The task id folds in `isInDemoMode` as well as
+            // `scenePhase` so the loop restarts on *either* transition:
+            // leaving `.active` cancels the poll, and pairing/disconnecting
+            // (which flips demo mode without any scene change) starts or
+            // stops it. Keying on `scenePhase` alone would leave the poll off
+            // for the whole first session after an in-app pair.
+            .task(id: RefreshTrigger(scenePhase: scenePhase, isInDemoMode: store.isInDemoMode)) {
+                guard scenePhase == .active, !store.isInDemoMode else { return }
+                await store.refresh()
+                // Poll until the task is cancelled (scene left `.active`).
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: Self.pollInterval)
+                    if Task.isCancelled { break }
                     await store.refresh()
                 }
             }
     }
+}
+
+/// Identity for the auto-refresh `.task`. Changing any field cancels the
+/// running poll loop and starts a fresh one — see the `.task(id:)` call.
+private struct RefreshTrigger: Equatable {
+    let scenePhase: ScenePhase
+    let isInDemoMode: Bool
 }
 
 #Preview {

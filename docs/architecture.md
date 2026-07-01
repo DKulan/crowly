@@ -11,12 +11,12 @@
  │                 │ Companion service│◀────────────▶│  list / detail /   │
  │                 │ • validate+store │ (TLS + token)│  archive /         │
  │                 │ • list / summary │              │  demo mode / QR    │
- │                 │                  │              │  pull-to-refresh / │
+ │                 │                  │              │  auto-refresh /    │
  │                 └─────────────────┘ │              │  widget timeline   │
  └────────────────────────────────────┘              └────────────────────┘
 ```
 
-- The **app** talks **directly to the user's own companion** over HTTPS for all content. Pull-to-refresh in the app; the widget's `TimelineProvider` reloads on its own schedule.
+- The **app** talks **directly to the user's own companion** over HTTPS for all content. The app auto-refreshes on foreground + interval poll (pull-to-refresh stays as a manual override); the widget's `TimelineProvider` reloads on its own schedule.
 - The **companion** stores everything on the user's own VPS — ingest, store, serve.
 - No central service exists in the MVP. Content never leaves the user's infrastructure, by construction.
 
@@ -54,7 +54,7 @@ The data-owning core. Self-hosted, typically a Docker bundle alongside Hermes.
 
 ## Refresh model
 
-- **The app pulls.** Pull-to-refresh in the inbox; an `onAppear` refresh when the app foregrounds; a manual refresh from Settings. Everything in the app fetches `GET /list` (or `GET /summary` for the widget) over the user's companion HTTPS endpoint.
+- **The app pulls, and pulls on its own.** While foregrounded the inbox auto-refreshes: an immediate pull whenever the app becomes active (launch or return from background), then a gentle interval poll (~60s) that a `scenePhase`-keyed task cancels on background and restarts on foreground. Pull-to-refresh remains as a manual override, but the user shouldn't need it. Everything in the app fetches `GET /list` (or `GET /summary` for the widget) over the user's companion HTTPS endpoint.
 - **The widget refreshes itself.** Its `TimelineProvider` carries a **~15-minute reload floor** that re-fetches `GET /summary` independent of the app being open. This bounds widget staleness without any server-pushed wake-up: the widget is the marketing artifact, so this is a committed property, not an accident.
 - There is no notification delivery in the MVP. New digests surface when the user next opens the app or the widget timeline next fires.
 

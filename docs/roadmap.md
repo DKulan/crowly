@@ -15,7 +15,7 @@ Everything points at Daniel's own VPS. **This is the gate.**
 
 1. [ ] **Companion core** — validating idempotent ingest + store + `GET /list` + `GET /summary`. The store **preserves unknown schema fields verbatim** from day one (full digest blob) — cheap now, a data migration later (`docs/schema.md` → Versioning). Read/archive state is a simple state-change write the app POSTs.
 2. [ ] **Emitter kit** — helper + Hermes skill so the inbox is non-empty (Harmony, morning briefing, vendor/research watcher).
-3. [ ] **iOS app core** — inbox list + detail view + archive flow + pull-to-refresh + search hitting the companion over TLS; token in the Keychain.
+3. [ ] **iOS app core** — inbox list + detail view + archive flow + auto-refresh (foreground + interval poll; pull-to-refresh kept as manual override) + search hitting the companion over TLS; token in the Keychain.
 4. [ ] **Home-screen widget** (pull/timeline-refresh: latest digests + unread count; `Link`-deeplink rows, no buttons; ~15-minute reload floor against `GET /summary`).
 5. [ ] **Run the two-week pull test** (`docs/validation.md`).
 
