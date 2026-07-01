@@ -27,7 +27,7 @@ Part design docs, part code. The **iOS app** (M1 demo mode) is a real Swift/Swif
 Build & test (iPhone 17 Pro / iOS 26 sim):
 `xcodegen generate && xcodebuild -project Crowly.xcodeproj -scheme Crowly -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build {build|test}`
 
-Not yet verifiable via automation: the **home-screen widget render** (simulator can't add widgets headlessly — needs a manual check).
+Not automatable: the **home-screen widget render** (simulator can't add widgets headlessly — needs a manual check). **Verified manually on device 2026-06-30** — it renders on the real iPhone home screen.
 
 ## Invariants (hard-won; changing one is a design decision, not a refactor)
 
