@@ -57,6 +57,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full diagram and flow
 - [`docs/validation.md`](docs/validation.md) — the M1 two-week personal test, success criteria, kill criteria.
 - [`docs/roadmap.md`](docs/roadmap.md) — M1 (single-user) → M2 (public-ready) build order.
 - [`docs/onboarding.md`](docs/onboarding.md) — single-user install runbook (app + companion + emitter) with per-step ✅/🔨/👤 status; doubles as the team's debug checklist.
+- [`docs/deployment-learnings.md`](docs/deployment-learnings.md) — the real first VPS + iPhone deploy: the working path (Tailscale Funnel, shared Docker net, Hermes emit skill) and every snag + fix — source material for the M2 agent-driven `setup-crowly` installer.
 - [`docs/naming.md`](docs/naming.md) — the name (**Crowly**), why it was chosen, and how to claim it on the App Store.
 
 ## Status

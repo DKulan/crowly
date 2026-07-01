@@ -19,6 +19,7 @@ Part design docs, part code. The **iOS app** (M1 demo mode) is a real Swift/Swif
 - `docs/validation.md` — the M1 two-week personal test and reader-shape kill criteria.
 - `docs/roadmap.md` — M1 (single-user) → M2 (public-ready) build order.
 - `docs/onboarding.md` — single-user install runbook (app + companion + emitter) with per-step ✅/🔨/👤 status; doubles as the team's debug checklist.
+- `docs/deployment-learnings.md` — the real first VPS+iPhone deploy (2026-06-30): working path (Tailscale Funnel + shared docker net + Hermes emit skill) and every snag/fix — source material for the M2 `setup-crowly` installer.
 - `docs/naming.md` — why "Crowly"; App Store name not yet claimed in App Store Connect.
 
 **Code (iOS app):** `project.yml` is the source of truth — **XcodeGen** generates `Crowly.xcodeproj` (gitignored; run `xcodegen generate` after adding/moving files). Targets: `Crowly` (app; sources `App/` + `Shared/`), `CrowlyWidgetExtension` (`Widget/` + `Shared/`), `CrowlyTests` (Swift Testing). Deployment target **iOS 26** (Liquid Glass used freely; simulator-only, unsigned). `Shared/` is compiled into both app and widget. M1 is **demo mode** — fully client-side from `Shared/Demo/` fixtures, no companion/App Group/signing.

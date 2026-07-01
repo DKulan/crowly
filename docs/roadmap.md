@@ -24,7 +24,7 @@ Everything points at Daniel's own VPS. **This is the gate.**
 ## M2 — "public-ready" (the layer M1 doesn't need but strangers do)
 
 6. [ ] **Demo mode polish** — bundled canned digests across urgency tiers and shapes; first-run default, App-Review unblocker, and the marketing artifact. (Demo mode itself ships in M1; M2 is polishing it for strangers.)
-7. [ ] **Stranger onboarding** — bundled Caddy auto-HTTPS (domain) + Cloudflare-Tunnel recipe (no-domain); QR pairing polish.
+7. [ ] **Stranger onboarding** — a published companion image + an agent-driven `setup-crowly` skill. **Default TLS strategy: Tailscale Funnel** (no domain/DNS/ACME; TLS terminates on the user's node so content stays private), with existing-proxy (Traefik labels) and bundled-Caddy as power-user options. QR pairing polish. **See `docs/deployment-learnings.md`** — the real first deploy, with every snag (packaging, proxy port conflict, LE rate-limit, tunnel-cert-from-inside-tailnet, container↔host networking) and the exact fix the installer must encode.
 8. [ ] **Version negotiation hardening** — additive-only schema enforced in CI; degrade-and-warn / "update your companion" banner when the companion's `schema_version` falls outside `N`/`N-1`. (Unknown-field *passthrough* already shipped in M1; this phase adds the negotiation UX on top.)
 9. [ ] **Privacy & submission** — privacy policy URL, nutrition labels (app-functionality, not tracking), in-app disconnect.
 10. [ ] **Onboarding docs** — app + companion + emitter kit as one kit → **submit to the App Store.**
