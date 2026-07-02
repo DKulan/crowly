@@ -23,6 +23,7 @@
 import SwiftUI
 import Foundation
 import Observation
+import WidgetKit
 
 @MainActor
 @Observable
@@ -188,6 +189,7 @@ final class DigestStore {
         }
         digestStates[digest.id] = .read
         mirrorState(id: digest.id, state: .read)
+        publishWidgetSnapshot()
     }
 
     /// Archive a digest. Captures the id so the swipe-undo affordance can
@@ -196,6 +198,7 @@ final class DigestStore {
         digestStates[digest.id] = .archived
         lastArchivedId = digest.id
         mirrorState(id: digest.id, state: .archived)
+        publishWidgetSnapshot()
     }
 
     /// Undo the most recent archive. Returns the unarchived digest's id (or
@@ -208,6 +211,7 @@ final class DigestStore {
         digestStates[id] = .read
         lastArchivedId = nil
         mirrorState(id: id, state: .read)
+        publishWidgetSnapshot()
         return id
     }
 
@@ -271,6 +275,35 @@ final class DigestStore {
         }
         self.digestStates = states
         self.lastArchivedId = nil
+        publishWidgetSnapshot()
+    }
+
+    // MARK: - Widget bridge
+
+    /// Push the current inbox to the App Group snapshot and nudge WidgetKit to
+    /// reload. Two jobs:
+    ///   * seeds the widget's very first render (before it has ever fetched
+    ///     `/summary`) and keeps its offline fallback current;
+    ///   * reflects local optimistic read/archive state on the home screen
+    ///     between the widget's own ~15-min `/summary` syncs, so a digest the
+    ///     user just read isn't still counted "unread" on the widget.
+    ///
+    /// Live mode only. In demo mode the widget reads `DemoFixtures` directly
+    /// (and there's no App Group state worth mirroring), so we skip it — and
+    /// avoid clobbering a paired snapshot if the app is briefly demo.
+    private func publishWidgetSnapshot() {
+        guard !isInDemoMode else { return }
+        // Unread = visible (non-archived) digests still in `.unread`. This
+        // mirrors what the widget shows between server syncs; the next
+        // `/summary` fetch re-establishes the server's authoritative count.
+        let unread = digests.filter { digestState(for: $0.id) == .unread }.count
+        let snapshot = WidgetSnapshot.build(
+            from: digests.filter { digestState(for: $0.id) != .archived },
+            unreadCount: unread,
+            capturedAt: Date()
+        )
+        WidgetSnapshotStore.write(snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - Pairing transitions
@@ -301,6 +334,10 @@ final class DigestStore {
         }
         self.lastArchivedId = nil
         self.lastRefreshError = nil
+        // Drop the shared snapshot so the widget can't keep showing the
+        // previous companion's digests, and nudge it back to its demo path.
+        WidgetSnapshotStore.clear()
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - Convenience

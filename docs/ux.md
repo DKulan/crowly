@@ -118,7 +118,7 @@ Constraints respected:
 
 - **No buttons.** `Button(intent:)` is not used anywhere in the widget — there's no action to take. (This is a deliberate departure from the old loop-widget design.)
 - **No content beyond `title` + `bottom_line` + timestamp** — the widget is a pointer to the digest, not the digest itself.
-- **No widget login state** — the widget reads a shared App Group container the app populates; unpaired → "Open Crowly to pair," never blank/error.
+- **No widget login state** — never blank/error. Data path as shipped (M1 Phase 1, `docs/architecture.md` § Widget data path): when **paired**, the widget fetches `GET /summary` itself on its ~15-min timeline and caches the result to a shared App Group snapshot, falling back to that snapshot when a fetch fails (the app also writes the snapshot on refresh/read/archive to seed the first render). When **unpaired**, the widget renders **demo fixtures** — matching the app's demo-mode-when-unpaired behavior and giving App Review a populated widget to screenshot. (This supersedes an earlier draft of this line that showed an "Open Crowly to pair" prompt when unpaired; demo fixtures won because a populated widget reads better on the home screen and in App Review than an empty call-to-action.)
 
 ## Onboarding (≈60 seconds)
 

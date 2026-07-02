@@ -106,6 +106,9 @@ Priority: **P0 before further real usage**.
 
 ## Critical finding 2: live widget is still demo-only
 
+> **Resolved 2026-07-02 (M1 Phase 1 — live widget).** The widget now fetches `GET /summary` on its own `TimelineProvider` when paired (with a `.after(now + ~15min)` reload floor), renders the server's rows + authoritative `unread_count`, and falls back to an App Group (`group.com.crowly`) snapshot when offline; unpaired still shows `DemoFixtures`. `project.yml` declares the shared Keychain access group + App Group entitlements on both targets, and `KeychainStore` now uses a fixed shared service (`com.crowly.shared`) instead of the bundle id. The recommended fixes below are all done except this doc's original ask #4 — "only start the validation clock after the widget reflects live data" — which is now *unblocked* (see `docs/roadmap.md` M1 item 4). Details: `docs/architecture.md` § Widget data path.
+
+
 Fable 5 found that `Widget/CrowlyWidget.swift` appears to use demo data rather than live companion data:
 
 - Reads `DemoFixtures`.
@@ -173,6 +176,8 @@ Fable 5 found docs that may describe aspirational or stale behavior as if alread
 - `docs/onboarding.md` appears closer to current reality than some older docs.
 
 Recommended fix: mark future behavior explicitly or update docs to match current code.
+
+> **Partially resolved 2026-07-02.** `docs/architecture.md` already marks paginated `/list`, QR pairing, and auth rate limiting as *planned, not shipped* (§ Components / § Pairing / § Security). The `CLAUDE.md` "demo mode … no companion/App Group/signing" line was de-staled in the M1 Phase 1 doc pass — M1 is now described as demo-when-unpaired / live companion-backed when paired, with the live widget's App Group + shared Keychain group + device signing. The `App/Net/` → `Shared/Net/` move (this review cited `App/Net/CompanionClient.swift`, `App/Security/KeychainStore.swift`) is reflected in the doc references.
 
 ### Minor SwiftUI identity issue
 

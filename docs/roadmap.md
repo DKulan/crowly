@@ -11,13 +11,13 @@ The organizing principle: **the single-user vertical slice (M1) is a strict subs
 
 ## M1 — "the reader works on my phone" (single-user)
 
-Everything points at Daniel's own VPS. **This is the gate.**
+Everything points at Daniel's own VPS. **This is the gate.** Build items 1–4 are **done** (2026-07-02); item 5 — the two-week behavioral test — is the remaining gate.
 
-1. [ ] **Companion core** — validating idempotent ingest + store + `GET /list` + `GET /summary`. The store **preserves unknown schema fields verbatim** from day one (full digest blob) — cheap now, a data migration later (`docs/schema.md` → Versioning). Read/archive state is a simple state-change write the app POSTs.
-2. [ ] **Emitter kit** — helper + Hermes skill so the inbox is non-empty (Harmony, morning briefing, vendor/research watcher).
-3. [ ] **iOS app core** — inbox list + detail view + archive flow + auto-refresh (foreground + interval poll; pull-to-refresh kept as manual override) + search hitting the companion over TLS; token in the Keychain.
-4. [ ] **Home-screen widget** (pull/timeline-refresh: latest digests + unread count; `Link`-deeplink rows, no buttons; ~15-minute reload floor against `GET /summary`).
-5. [ ] **Run the two-week pull test** (`docs/validation.md`).
+1. [x] **Companion core** — validating idempotent ingest + store + `GET /list` + `GET /summary`. The store **preserves unknown schema fields verbatim** from day one (full digest blob) — cheap now, a data migration later (`docs/schema.md` → Versioning). Read/archive state is a simple state-change write the app POSTs. *(Shipped: `companion/`, end-to-end tested; `{digest, state}` envelope shape on `/list` + `/summary`.)*
+2. [x] **Emitter kit** — helper + Hermes skill so the inbox is non-empty (Harmony, morning briefing, vendor/research watcher). *(Shipped: `emitter/`; helper verified against the real companion.)*
+3. [x] **iOS app core** — inbox list + detail view + archive flow + auto-refresh (foreground + interval poll; pull-to-refresh kept as manual override) + search hitting the companion over TLS; token in the Keychain. *(Shipped; verified on device 2026-06-30.)*
+4. [x] **Home-screen widget** — **live** (Phase 1, 2026-07-02): when paired, the widget's own `TimelineProvider` fetches `GET /summary` on a ~15-minute reload floor and renders the server's latest digests + authoritative unread count; `Link`-deeplink rows, no buttons; App Group (`group.com.crowly`) snapshot fallback for offline; shared Keychain access group so the widget reads the app's pairing token; unpaired = demo fixtures. See `docs/architecture.md` § Widget data path. **This item gated the validation clock — it is now closed, so the two-week test can start.**
+5. [ ] **Run the two-week pull test** (`docs/validation.md`). ← the only open M1 item.
 
 **Gate:** meet success criteria → M2. Otherwise keep it personal; do **not** widen inputs.
 

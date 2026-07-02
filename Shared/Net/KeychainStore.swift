@@ -11,16 +11,37 @@
 // backups and iCloud sync without us asking.
 //
 // Item shape: a single generic password (`kSecClassGenericPassword`) per slot,
-// keyed by a string account name. The bundle id is the service so a future
-// share-extension or sibling app doesn't collide. `kSecAttrAccessible` is
-// `WhenUnlockedThisDeviceOnly` — the token is per-device (it's bound to a
-// specific companion pairing) and should not migrate via iCloud Keychain or
-// be readable while the device is locked.
+// keyed by a string account name. The service is a FIXED shared string
+// (`SharedKeychain.service`) — NOT the bundle id — because the widget
+// extension (`com.crowly.Crowly.Widget`) and the app (`com.crowly.Crowly`)
+// must read the SAME item. A keychain item's identity is
+// class+service+account (+access group), so a bundle-id service would give
+// each target a different item and the widget could never see the app's
+// token. `kSecAttrAccessible` is `WhenUnlockedThisDeviceOnly` — the token is
+// per-device (bound to a specific companion pairing) and should not migrate
+// via iCloud Keychain or be readable while the device is locked.
+//
+// Access group: we deliberately do NOT set `kSecAttrAccessGroup`. When a
+// target has a `keychain-access-groups` entitlement, keychain services uses
+// its FIRST entry as the default group for reads and writes. Both targets
+// list `$(AppIdentifierPrefix)com.crowly.shared` first (see project.yml), so
+// both default to the same shared group with zero code — and we sidestep the
+// team-id prefix the runtime string would require (which also trips
+// errSecMissingEntitlement on the Simulator).
 //
 // Concurrency: SecItem* calls are thread-safe; this wrapper holds no state.
 
 import Foundation
 import Security
+
+/// Identifiers shared by the app and the widget extension. Kept in one place
+/// so the two targets can't drift — both must agree on the Keychain service
+/// (item identity) and the App Group suite (snapshot fallback).
+enum SharedKeychain {
+    /// `kSecAttrService` for every credential slot. A fixed string (not the
+    /// bundle id) so the app and widget address the same item.
+    static let service = "com.crowly.shared"
+}
 
 /// Errors surfaced by `KeychainStore`. We don't leak `OSStatus` codes to
 /// callers — the pairing view only needs "did the write succeed."
@@ -51,15 +72,17 @@ protocol CredentialStore: AnyObject, Sendable {
 }
 
 /// Real keychain-backed implementation. SecItem* is thread-safe; the only
-/// mutable state we'd have is the bundle-id `service`, which is set once at
-/// init — so straight `Sendable` is correct.
+/// mutable state we'd have is `service`, which is set once at init — so
+/// straight `Sendable` is correct.
 final class KeychainStore: CredentialStore {
 
-    /// `kSecAttrService` — the bundle id by default so a future sibling
-    /// (share extension, intents extension) doesn't fight us for the slot.
+    /// `kSecAttrService` — the fixed shared service (`SharedKeychain.service`)
+    /// so the app and the widget extension address the SAME keychain items.
+    /// Must not be the bundle id: the two targets have different bundle ids
+    /// and the widget would never find the app's token.
     private let service: String
 
-    init(service: String = Bundle.main.bundleIdentifier ?? "com.crowly.Crowly") {
+    init(service: String = SharedKeychain.service) {
         self.service = service
     }
 

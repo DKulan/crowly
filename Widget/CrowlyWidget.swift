@@ -4,21 +4,24 @@
 //                   bottom_line), each row `widgetURL`-deeplinks to
 //                   `crowly://digest/<id>`
 //
-// No interactivity — taps open the app via the row's widget URL.
+// No interactivity — taps open the app via the row's widget URL. Hard
+// invariant (CLAUDE.md): the widget is read-only — `Link`-deeplink rows only,
+// NEVER `Button(intent:)`.
+//
+// Data path (Phase 1 — live widget):
+//   - Unpaired  → demo fixtures (the App-Review / first-run experience).
+//   - Paired    → fetch `GET /summary` on this provider's own ~15-min
+//                 timeline. On success, render the server's rows +
+//                 authoritative `unread_count` and cache them to the App Group
+//                 snapshot. On failure (offline, VPS asleep), fall back to the
+//                 last snapshot the app or a prior fetch wrote.
+// `WidgetDigestRow` / `WidgetSnapshot` / `WidgetSnapshotStore` live in
+// `Shared/` so the app can build the same rows the widget renders.
 
 import WidgetKit
 import SwiftUI
 
 // MARK: - Entry
-
-/// One row's worth of state for the widget.
-struct WidgetDigestRow: Identifiable, Hashable {
-    let id: String          // digest id (used by the deeplink and ForEach)
-    let jobId: String
-    let title: String
-    let bottomLine: String
-    let createdAt: Date
-}
 
 /// A single timeline entry — a snapshot of the inbox at a moment in time.
 struct CrowlyEntry: TimelineEntry {
@@ -28,11 +31,37 @@ struct CrowlyEntry: TimelineEntry {
     let latestBottomLine: String?
 }
 
+// MARK: - Completion box
+
+/// Carries WidgetKit's non-`@Sendable` timeline completion across the `Task`
+/// boundary in `getTimeline`. Swift 6 refuses to let a bare non-Sendable
+/// closure be captured by a concurrently-executing closure; wrapping it in an
+/// `@unchecked Sendable` box makes the intent explicit and is safe here —
+/// WidgetKit invokes the completion exactly once, from one continuation.
+private final class CompletionBox: @unchecked Sendable {
+    private let completion: (Timeline<CrowlyEntry>) -> Void
+    init(_ completion: @escaping (Timeline<CrowlyEntry>) -> Void) {
+        self.completion = completion
+    }
+    func call(_ timeline: Timeline<CrowlyEntry>) { completion(timeline) }
+}
+
 // MARK: - Provider
 
-/// Reads from `DemoFixtures` in M1 demo mode. In real mode this would hit
-/// `GET /summary` on the user's companion — same entry shape.
+/// Feeds the widget. Branches on pairing:
+///   - paired   → live `/summary` fetch with App Group snapshot fallback,
+///                reloading on a ~15-min timeline.
+///   - unpaired → demo fixtures, no reload (nothing live to chase).
 struct CrowlyProvider: TimelineProvider {
+
+    /// Timeline reload floor for the live path — matches the roadmap's
+    /// committed "~15-minute reload floor against GET /summary". WidgetKit
+    /// treats this as a request, not a guarantee; the OS may space reloads
+    /// further apart under budget pressure.
+    private static let reloadInterval: TimeInterval = 15 * 60
+
+    private let credentials: CredentialStore = KeychainStore()
+
     func placeholder(in context: Context) -> CrowlyEntry {
         CrowlyEntry(
             date: .now,
@@ -43,42 +72,82 @@ struct CrowlyProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (CrowlyEntry) -> Void) {
-        completion(snapshot(at: .now))
+        // Gallery/transient snapshot: cheap, synchronous. Prefer the last
+        // cached snapshot when paired; otherwise show demo.
+        if credentials.isPaired, let cached = WidgetSnapshotStore.read() {
+            completion(Self.entry(from: cached, at: .now))
+        } else {
+            completion(demoEntry(at: .now))
+        }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<CrowlyEntry>) -> Void) {
-        // M1 demo: single entry, never refresh (no live data to chase).
-        let entry = snapshot(at: .now)
-        completion(Timeline(entries: [entry], policy: .never))
+        // Unpaired: single demo entry, never refresh (no live data to chase).
+        guard credentials.isPaired else {
+            completion(Timeline(entries: [demoEntry(at: .now)], policy: .never))
+            return
+        }
+
+        // Precompute everything the async closure needs from non-Sendable
+        // inputs (`context`, `self`) up front, so the `Task` captures only
+        // Sendable values — Swift 6 flags capturing `Context` in a concurrent
+        // closure otherwise. WidgetKit's `completion` isn't `@Sendable`, so it
+        // rides through a one-shot box (WidgetKit calls it exactly once).
+        let credentials = self.credentials
+        let placeholderEntry = placeholder(in: context)
+        let sink = CompletionBox(completion)
+
+        // Paired: fetch /summary, fall back to the cached snapshot on failure.
+        Task {
+            let client = CompanionClient(credentials: credentials)
+            let now = Date()
+            let next = now.addingTimeInterval(Self.reloadInterval)
+            let result: CrowlyEntry
+            do {
+                let summary = try await client.summary()
+                let snapshot = WidgetSnapshot.build(
+                    from: summary.latest.map(\.digest),
+                    unreadCount: summary.unread_count,
+                    capturedAt: now
+                )
+                // Cache so a later failed fetch (or the app's first render)
+                // has real data to fall back to.
+                WidgetSnapshotStore.write(snapshot)
+                result = Self.entry(from: snapshot, at: now)
+            } catch {
+                // Offline / VPS asleep / transient: show the last known good
+                // snapshot rather than a blank card, and retry on schedule.
+                result = WidgetSnapshotStore.read().map { Self.entry(from: $0, at: now) }
+                    ?? placeholderEntry
+            }
+            sink.call(Timeline(entries: [result], policy: .after(next)))
+        }
     }
 
-    private func snapshot(at date: Date) -> CrowlyEntry {
-        // Sort by recency (urgency breaks ties — a high-urgency digest from
-        // the same minute beats a low-urgency one).
-        let sorted = DemoFixtures.digests.sorted { lhs, rhs in
-            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
-            return lhs.urgency > rhs.urgency
-        }
+    // MARK: Entry builders
 
-        let rows: [WidgetDigestRow] = sorted.prefix(3).map { d in
-            WidgetDigestRow(
-                id: d.id,
-                jobId: d.jobId,
-                title: d.title,
-                bottomLine: d.bottomLine,
-                createdAt: d.createdAt
-            )
-        }
-
-        return CrowlyEntry(
+    /// Build a timeline entry from a stored/fetched snapshot. Static so the
+    /// async `getTimeline` closure can call it without capturing `self`.
+    private static func entry(from snapshot: WidgetSnapshot, at date: Date) -> CrowlyEntry {
+        CrowlyEntry(
             date: date,
-            rows: rows,
-            // M1 demo mode treats every fixture digest as unread on each
-            // widget snapshot — the widget process can't see the app's
-            // `DigestStore`. M2 will read state from a shared App Group.
-            unreadCount: DemoFixtures.digests.count,
-            latestBottomLine: sorted.first?.bottomLine
+            rows: snapshot.rows,
+            unreadCount: snapshot.unreadCount,
+            latestBottomLine: snapshot.rows.first?.bottomLine
         )
+    }
+
+    /// The unpaired demo entry — the first-run / App-Review experience.
+    private func demoEntry(at date: Date) -> CrowlyEntry {
+        let snapshot = WidgetSnapshot.build(
+            from: DemoFixtures.digests,
+            // Demo mode treats every fixture digest as unread — the widget
+            // process can't see the app's in-memory read state, and there's
+            // no companion to ask.
+            unreadCount: DemoFixtures.digests.count,
+            capturedAt: date
+        )
+        return Self.entry(from: snapshot, at: date)
     }
 }
 

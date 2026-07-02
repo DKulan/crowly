@@ -72,7 +72,7 @@ The shape:
 
 ## Step 3 — Pair the phone ✅ manual / 🔨 QR
 
-The companion exposes `GET /pair`, which returns `{companion_url, pairing_token}` (`docs/architecture.md` § Pairing). The verified M1 path is **manual URL+token entry**: the app's `PairCompanionView` ("Enter URL and token instead") writes both into a throwaway slot, calls `/health` and `/list` to prove the combo really is a Crowly companion with this token, and only then persists them to the **Keychain** and swaps `DigestStore` from demo to live (`App/Views/PairCompanionView.swift`, `App/Net/CompanionClient.swift`, `App/Net/KeychainStore.swift`).
+The companion exposes `GET /pair`, which returns `{companion_url, pairing_token}` (`docs/architecture.md` § Pairing). The verified M1 path is **manual URL+token entry**: the app's `PairCompanionView` ("Enter URL and token instead") writes both into a throwaway slot, calls `/health` and `/list` to prove the combo really is a Crowly companion with this token, and only then persists them to the **Keychain** and swaps `DigestStore` from demo to live (`App/Views/PairCompanionView.swift`, `Shared/Net/CompanionClient.swift`, `Shared/Net/KeychainStore.swift` — the client + keychain moved to `Shared/` in Phase 1 so the widget shares the same pairing token).
 
 > **Today: manual entry is wired end-to-end and validate-before-persist works.** QR scan is stubbed — the entry point in `PairCompanionView` is reserved (`showQRScanner`) but `AVFoundation` integration is M2 (`docs/roadmap.md` § M2).
 
@@ -119,7 +119,7 @@ This is what the two-week test measures (`docs/validation.md`):
 
 - Hermes cron emits → companion stores → app/widget pulls → user reads in the app → archives.
 - Opening a digest marks it read; archive (with undo) is the only triage move (no "handled," no snooze — `CLAUDE.md` § Invariants).
-- The home-screen widget is the steady-state cue: latest digests + unread count, `Link`-deeplink rows, **read-only** (no `Button(intent:)`). The widget refreshes itself on its `TimelineProvider` (~15-minute floor); the app auto-refreshes while open (foreground + ~60s interval poll), with pull-to-refresh as a manual override.
+- The home-screen widget is the steady-state cue: latest digests + unread count, `Link`-deeplink rows, **read-only** (no `Button(intent:)`). It is **live** once paired (Phase 1, 2026-07-02): the widget fetches `GET /summary` itself on its `TimelineProvider` (~15-minute floor) and shows the server's rows + authoritative unread count, with an App Group snapshot fallback when the fetch fails (offline / VPS asleep); before pairing it shows demo fixtures. The app auto-refreshes while open (foreground + ~60s interval poll), with pull-to-refresh as a manual override, and writes the App Group snapshot on refresh + read/archive so the widget's fallback stays current.
 
 *Verify:* most days, the user opens the app **unprompted** after the seeding period; archive is the natural end-state, not a guilt pile (`docs/validation.md` § Success criteria).
 
@@ -136,6 +136,6 @@ This is what the two-week test measures (`docs/validation.md`):
 | 2. Stand up the companion | ✅ built / 👤 deploy | Operator `docker compose up` on their VPS; Caddy auto-issues TLS from their hostname |
 | 3. Pair the phone | ✅ manual entry / 🔨 QR scan | QR scan (M2) |
 | 4. Wire the emitter | ✅ helper against real companion / 🔨 Hermes-skill registry install | Pinned-skill install into a live Hermes deployment |
-| 5. Steady state | ✅ as a *reading experience* on demo digests; live loop runs once Steps 2–4 are deployed | The two-week behavioral test itself (`docs/validation.md`) |
+| 5. Steady state | ✅ app + **live widget** built (widget fetches `/summary` on its own timeline, App Group fallback — Phase 1, 2026-07-02); the live loop runs once Steps 2–4 are deployed | The two-week behavioral test itself (`docs/validation.md`) |
 
-The gap at a glance: **the software is built.** What remains is operator deployment (Step 2 onto the user's VPS), the Hermes-skill registry install (Step 4), and the M1 behavioral gate itself — the two-week validation test (`docs/validation.md`).
+The gap at a glance: **the software is built** — including the live companion-backed widget (M1 Phase 1). What remains is operator deployment (Step 2 onto the user's VPS), the Hermes-skill registry install (Step 4), and the M1 behavioral gate itself — the two-week validation test (`docs/validation.md`).

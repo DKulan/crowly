@@ -35,9 +35,9 @@ The data-owning core. Self-hosted, typically a Docker bundle alongside Hermes.
 
 ### 3. iOS app (App Store)
 - Card list, detail view, archive flow (with undo), pull-to-refresh, search.
-- **Home-screen widget** — latest digests + unread count; tap-through deeplinks open the app to that digest. No buttons. Refreshes on the widget's own `TimelineProvider` schedule, pulling `GET /summary`.
-- **Demo mode** — bundled canned digests; first-run default and the only thing a non-self-hoster (incl. an App Reviewer) sees.
-- **Pairing** — manual companion URL + token entry today; QR scan is *planned, not shipped*. Either path stores companion URL + token in the **Keychain**.
+- **Home-screen widget (live, shipped M1 Phase 1)** — latest digests + unread count; tap-through deeplinks open the app to that digest. No buttons. When **paired**, the widget's own `TimelineProvider` fetches `GET /summary` on a ~15-minute reload floor (independent of the app being open), rendering the server's rows + authoritative `unread_count`; on a failed fetch (offline / VPS asleep) it falls back to the last **App Group snapshot**. When **unpaired**, it shows demo fixtures with a `.never` reload. See § Widget data path for the cross-target credential/snapshot wiring.
+- **Demo mode** — the **unpaired** path, not a separate build: bundled canned digests, the first-run default and the only thing a non-self-hoster (incl. an App Reviewer) sees. Both the app *and* the widget render fixtures until pairing.
+- **Pairing** — manual companion URL + token entry today; QR scan is *planned, not shipped*. Either path stores companion URL + token in the **Keychain** (a fixed shared service, shared access group — see § Widget data path).
 
 ## Networking & TLS
 
@@ -58,8 +58,17 @@ The data-owning core. Self-hosted, typically a Docker bundle alongside Hermes.
 ## Refresh model
 
 - **The app pulls, and pulls on its own.** While foregrounded the inbox auto-refreshes: an immediate pull whenever the app becomes active (launch or return from background), then a gentle interval poll (~60s) that a `scenePhase`-keyed task cancels on background and restarts on foreground. Pull-to-refresh remains as a manual override, but the user shouldn't need it. Everything in the app fetches `GET /list` (or `GET /summary` for the widget) over the user's companion HTTPS endpoint.
-- **The widget refreshes itself.** Its `TimelineProvider` carries a **~15-minute reload floor** that re-fetches `GET /summary` independent of the app being open. This bounds widget staleness without any server-pushed wake-up: the widget is the marketing artifact, so this is a committed property, not an accident.
+- **The widget refreshes itself.** When paired, its `TimelineProvider` carries a **~15-minute reload floor** that re-fetches `GET /summary` independent of the app being open (WidgetKit treats the floor as a request, not a guarantee — the OS may space reloads further apart under budget pressure). This bounds widget staleness without any server-pushed wake-up: the widget is the marketing artifact, so this is a committed property, not an accident. When unpaired the timeline is `.never` — there's no live data to chase.
 - There is no notification delivery in the MVP. New digests surface when the user next opens the app or the widget timeline next fires.
+
+## Widget data path (Phase 1 — shipped)
+
+The widget extension is a separate process from the app, so making the widget live means giving it its own read path to the companion plus a fallback that survives an offline fetch.
+
+- **The widget reads the companion directly.** The companion client and credential store (`Shared/Net/CompanionClient.swift`, `Shared/Net/KeychainStore.swift`) compile into **both** the app and the widget extension (`Shared/` is a shared source root). The widget builds its own `CompanionClient` and calls `GET /summary`; the server's `unread_count` is authoritative.
+- **Shared Keychain (the pairing token).** Both targets store credentials in a keychain item under a **fixed shared service** (`SharedKeychain.service` = `com.crowly.shared`) — deliberately *not* the bundle id, since the app and widget have different bundle ids and a per-bundle service would give each target a different item. Item sharing is via the **default keychain access group**: both targets declare `keychain-access-groups: [$(AppIdentifierPrefix)com.crowly.shared]` in `project.yml`, and keychain services uses the *first* entry as the read/write group — so `KeychainStore` never passes an explicit `kSecAttrAccessGroup` (which would need the team-id prefix and trips `errSecMissingEntitlement` on the simulator). The widget reads the same token the app wrote, with no code coupling.
+- **App Group snapshot (offline fallback / first-render seed).** App Group `group.com.crowly` (declared as `com.apple.security.application-groups` on both targets) backs a small `UserDefaults`-suite snapshot (`Shared/Widget/WidgetSnapshotStore.swift`: `WidgetDigestRow`, `WidgetSnapshot`, `WidgetSnapshotStore`). Two writers: the **widget** writes it after each successful `/summary` fetch (so a later failed fetch shows the last-known digests instead of a blank card), and the **app** writes it after every refresh and after read/archive mutations (seeding the widget's very first render and keeping the fallback's read-state current). On disconnect the app clears the snapshot so a disconnected widget can't keep showing a previous companion's digests.
+- **Invariant unchanged:** the widget remains **read-only** — `Link`-deeplink rows only, never `Button(intent:)`. The live data path adds a fetch and a fallback; it does not add interactivity.
 
 ## Privacy & data
 

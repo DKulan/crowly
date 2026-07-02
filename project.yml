@@ -62,6 +62,29 @@ targets:
           - CFBundleTypeRole: Editor
             CFBundleURLName: com.crowly.Crowly
             CFBundleURLSchemes: [crowly]
+    # Phase 1 (live widget): the app and the widget extension must share the
+    # pairing token (Keychain) and a read-state snapshot (App Group).
+    #   - keychain-access-groups: the FIRST entry is the default access group
+    #     for both targets, so KeychainStore never has to pass an explicit
+    #     kSecAttrAccessGroup (which would need the team-id prefix and trips
+    #     errSecMissingEntitlement on the simulator). Both targets share the
+    #     same fixed Keychain *service* (SharedKeychain.service) so item
+    #     identity matches across the app<->widget boundary.
+    #   - application-groups: backs the widget's offline snapshot fallback
+    #     (WidgetSnapshotStore, UserDefaults suite `group.com.crowly`).
+    # XcodeGen writes this plist from `properties` on every `generate`.
+    entitlements:
+      path: App/Crowly.entitlements
+      properties:
+        # `com.crowly.shared` MUST stay the FIRST keychain-access-group entry:
+        # KeychainStore sets no explicit kSecAttrAccessGroup, so SecItem uses
+        # the first entry as the default group. Adding another group ABOVE it
+        # (e.g. a future share extension) would silently move the app's writes
+        # to the wrong group and the widget would stop finding the token.
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.crowly.shared
+        com.apple.security.application-groups:
+          - group.com.crowly
     dependencies:
       - target: CrowlyWidgetExtension
 
@@ -78,6 +101,17 @@ targets:
         INFOPLIST_FILE: Widget/Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: Crowly
         ENABLE_PREVIEWS: "YES"
+    # Same shared-access entitlements as the app target (see the app's
+    # `entitlements` note). Both targets MUST list identical values or the
+    # default keychain access group and App Group won't line up.
+    entitlements:
+      path: Widget/CrowlyWidget.entitlements
+      properties:
+        # See the app target's note: `com.crowly.shared` must stay FIRST.
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.crowly.shared
+        com.apple.security.application-groups:
+          - group.com.crowly
 
   CrowlyTests:
     type: bundle.unit-test
