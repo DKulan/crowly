@@ -32,6 +32,13 @@ services:
       CROWLY_DB_PATH: /opt/data/crowly.db
       CROWLY_HOST: 0.0.0.0
       CROWLY_PORT: 8787
+      # Gates the network-reachable /pair (and /) endpoints, which return the
+      # bearer token in cleartext. Default OFF (0): the Funnel hostname is
+      # discoverable via Certificate Transparency logs, so a permanently-open
+      # /pair leaks full access. Flip to 1 in .env for the brief initial
+      # pairing window, then back to 0 and restart. (server.py reads this;
+      # it must be injected here or the gate can't be opened from .env.)
+      CROWLY_PAIR_ENABLED: ${CROWLY_PAIR_ENABLED:-0}
       # The public URL the app dials — the tunnel's hostname. REQUIRED here
       # (there's no domain to derive it from). e.g. https://vps.tailXXXX.ts.net
       CROWLY_PUBLIC_URL: ${CROWLY_PUBLIC_URL:?set CROWLY_PUBLIC_URL to the tunnel public URL}

@@ -40,6 +40,11 @@ services:
       CROWLY_DB_PATH: /opt/data/crowly.db
       CROWLY_HOST: 0.0.0.0
       CROWLY_PORT: 8787
+      # Gates the network-reachable /pair (and /) endpoints, which return the
+      # bearer token in cleartext. Default OFF (0). Flip to 1 in .env only for
+      # the brief initial pairing window, then back to 0 and restart. Must be
+      # injected here or server.py's gate can't be opened from .env.
+      CROWLY_PAIR_ENABLED: ${CROWLY_PAIR_ENABLED:-0}
       CROWLY_PUBLIC_URL: ${CROWLY_PUBLIC_URL:-https://${CROWLY_DOMAIN}}
     volumes:
       - crowly-data:/opt/data
