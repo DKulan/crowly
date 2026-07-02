@@ -139,6 +139,13 @@ struct InboxView: View {
                 showPairSheet = true
                 router.pendingPair = false
             }
+            // `crowly://inbox` deeplink — the large widget's "View all →"
+            // footer. Pop any pushed digest detail so the user lands on the
+            // inbox root. (Counter, not Bool: a tap while already at root
+            // still fires this.)
+            .onChange(of: router.popToInbox) { _, _ in
+                path.removeAll()
+            }
         }
     }
 

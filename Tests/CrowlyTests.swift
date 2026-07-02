@@ -329,6 +329,26 @@ import Foundation
     #expect(router.pendingDigestId == "dgst_x")
 }
 
+@Test func deepLinkRouterRecognizesInboxURL() {
+    #expect(DeepLinkRouter.isInboxURL(URL(string: "crowly://inbox")!))
+    #expect(!DeepLinkRouter.isInboxURL(URL(string: "crowly://digest/abc")!))
+    #expect(!DeepLinkRouter.isInboxURL(URL(string: "https://inbox")!))
+}
+
+@Test @MainActor func deepLinkRouterInboxURLBumpsPopCounter() {
+    // The large widget's "View all →" footer deeplinks crowly://inbox. The
+    // counter increments (not a Bool flip) so a repeat tap still fires.
+    let router = DeepLinkRouter()
+    #expect(router.popToInbox == 0)
+    router.handle(URL(string: "crowly://inbox")!)
+    #expect(router.popToInbox == 1)
+    router.handle(URL(string: "crowly://inbox")!)
+    #expect(router.popToInbox == 2)
+    // A non-inbox URL doesn't touch it.
+    router.handle(URL(string: "crowly://digest/dgst_x")!)
+    #expect(router.popToInbox == 2)
+}
+
 // MARK: - Emitter wire contract
 
 /// The emitter kit (`emitter/crowly_emit.py`) builds digest envelopes and

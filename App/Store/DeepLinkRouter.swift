@@ -30,6 +30,12 @@ final class DeepLinkRouter {
     /// way to surface the pairing UI without touching the screen.
     var pendingPair: Bool = false
 
+    /// Set when a `crowly://inbox` URL arrives — pops the navigation stack
+    /// back to the inbox root. Used by the large widget's "View all →"
+    /// footer. A monotonically-incrementing counter (not a Bool) so a second
+    /// tap while already at the root still fires an `.onChange`.
+    var popToInbox: Int = 0
+
     /// Parse a `crowly://digest/<id>` URL. Returns the id, or `nil` if the
     /// URL isn't a digest deeplink. Defensive: ignores unknown hosts /
     /// trailing slashes so future URL shapes can be added additively.
@@ -48,7 +54,13 @@ final class DeepLinkRouter {
         url.scheme == "crowly" && url.host == "pair"
     }
 
-    /// Route a URL into the right pending slot. No-op if neither matches.
+    /// True iff the URL is `crowly://inbox` (the large widget's "View all →"
+    /// footer — pop to the inbox root).
+    nonisolated static func isInboxURL(_ url: URL) -> Bool {
+        url.scheme == "crowly" && url.host == "inbox"
+    }
+
+    /// Route a URL into the right pending slot. No-op if none matches.
     func handle(_ url: URL) {
         if let id = Self.digestId(from: url) {
             pendingDigestId = id
@@ -56,6 +68,10 @@ final class DeepLinkRouter {
         }
         if Self.isPairURL(url) {
             pendingPair = true
+            return
+        }
+        if Self.isInboxURL(url) {
+            popToInbox += 1
         }
     }
 }

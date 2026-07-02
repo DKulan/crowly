@@ -241,6 +241,7 @@ def main() -> int:
 
         status, body = _request("GET", f"{url}/summary", expect=200)
         _check("/summary unread_count==1", body["unread_count"] == 1, detail=str(body))
+        _check("/summary total==1", body.get("total") == 1, detail=str(body))
         _check("/summary latest has the digest", len(body["latest"]) == 1)
         _check("/summary latest entry uses the wrapper shape",
                set(body["latest"][0].keys()) == {"digest", "state"},
@@ -299,6 +300,23 @@ def main() -> int:
         # With two digests stored and one marked read, unread_count should be 1.
         _check("/summary unread_count == 1 after one state flip",
                body["unread_count"] == 1, detail=str(body))
+        # Two digests stored, neither archived → total counts both.
+        _check("/summary total == 2 with two non-archived digests",
+               body.get("total") == 2, detail=str(body))
+
+        # Archived digests are excluded from /summary latest + total (they must
+        # not resurface on the home-screen widget after being triaged away).
+        _request("POST", f"{url}/state",
+                 body={"id": digest_id, "state": "archived"}, expect=200)
+        status, body = _request("GET", f"{url}/summary", expect=200)
+        _check("/summary total drops to 1 after archiving one",
+               body.get("total") == 1, detail=str(body))
+        _check("/summary latest excludes the archived digest",
+               all(e["digest"]["id"] != digest_id for e in body["latest"]),
+               detail=str([e["digest"]["id"] for e in body["latest"]]))
+        # Restore state so later steps (which reference digest_id) are unaffected.
+        _request("POST", f"{url}/state",
+                 body={"id": digest_id, "state": "read"}, expect=200)
 
         # Invalid state -> 422
         _request("POST", f"{url}/state",

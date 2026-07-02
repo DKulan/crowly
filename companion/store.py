@@ -201,23 +201,39 @@ class Store:
         """).fetchall()
         return [self._row_to_payload(row) for row in rows]
 
-    def summary(self, latest_n: int = 3) -> dict:
-        """Cheap widget endpoint: unread count + the latest N digests.
+    def summary(self, latest_n: int = 5) -> dict:
+        """Cheap widget endpoint: unread count + the latest N non-archived
+        digests + the total non-archived count.
 
-        Latest is by `created_at`, not by arrival — a back-dated digest from
-        a late-firing cron doesn't jump to the top of the widget.
+        `latest_n` is 5 so the `.systemLarge` widget can fill its 4–5 rows
+        (medium/small render fewer from the same payload). Latest is by
+        `created_at`, not by arrival — a back-dated digest from a late-firing
+        cron doesn't jump to the top of the widget.
+
+        Archived digests are EXCLUDED from `latest` and `total`: archive is the
+        inbox's triage move, so a triaged digest must not resurface on the home
+        screen. This matches the app-side snapshot writer
+        (`DigestStore.publishWidgetSnapshot`, which filters `!= .archived`) so
+        the widget's two data sources — this live fetch and the App Group
+        snapshot — agree. `total` backs the large widget's "View all N →"
+        footer and counts what the inbox shows (non-archived).
         """
         conn = self._connection()
         unread = conn.execute(
             "SELECT COUNT(*) AS n FROM digests WHERE state = 'unread'"
         ).fetchone()["n"]
+        total = conn.execute(
+            "SELECT COUNT(*) AS n FROM digests WHERE state != 'archived'"
+        ).fetchone()["n"]
         latest_rows = conn.execute("""
             SELECT blob, state FROM digests
+             WHERE state != 'archived'
              ORDER BY created_at DESC, id DESC
              LIMIT ?
         """, (latest_n,)).fetchall()
         return {
             "unread_count": unread,
+            "total": total,
             "latest": [self._row_to_payload(r) for r in latest_rows],
         }
 

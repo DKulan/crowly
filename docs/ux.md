@@ -27,6 +27,7 @@ Home screen:
 └── CrowlyWidget (small / medium / large)
     ├── Timeline: latest digests, by created_at desc
     ├── Tap row → deeplink crowly://digest/<id>
+    ├── Large "View all N →" footer → deeplink crowly://inbox (pops to root)
     └── No buttons — pure reader surface
 ```
 
@@ -98,7 +99,7 @@ Order: **Header → Bottom line → Summary → Sections → Sources → Footer.
 
 ## Home-screen widget
 
-Fed by `GET /summary` (cheap; returns latest few digests + unread count). The widget's `TimelineProvider` reloads on its own **~15-minute floor**, refreshing from `GET /summary` — that's the entire refresh model (see [`architecture.md`](architecture.md) → Refresh model).
+Fed by `GET /summary` (cheap; returns the latest **5** non-archived digests + unread count + the non-archived `total`). The widget's `TimelineProvider` reloads on its own **~15-minute floor**, refreshing from `GET /summary` — that's the entire refresh model (see [`architecture.md`](architecture.md) → Refresh model). Archived digests are excluded from the widget — archive is a triage move, so a triaged digest must not resurface on the home screen.
 
 **Every widget size is read-only — tap deeplinks into the app; nothing else.** This is the reader-pivot's biggest UX move: no buttons in the widget, no answer affordances, no action verbs. The widget's job is "here's what just arrived; tap to read it."
 
@@ -106,7 +107,7 @@ Fed by `GET /summary` (cheap; returns latest few digests + unread count). The wi
 
 **`.systemMedium`** — the default and the App Store screenshot: header row with app glyph + unread count, then **the top 2–3 most-recent digests** as compact rows. Each row shows the leading job color stripe, the source (`title`), the relative timestamp, and the `bottom_line` (1 line, tail-truncated). Tapping a row deeplinks to that digest.
 
-**`.systemLarge`** — same shape as medium, **4–5 rows** + a "View all →" footer that deeplinks to the inbox root. Cut-target if M1 slips; small + medium covers the demo.
+**`.systemLarge`** — **shipped** (2026-07-02). Same header + shape as medium, but **up to 5 rows** and a **"View all N →" footer** (shown only when the inbox holds more non-archived digests than the widget can show) that deeplinks to the inbox root via `crowly://inbox` — a new deeplink whose only job is to pop the nav stack to the inbox root. `N` is the companion's non-archived `total` (`GET /summary` → `total`; see [`architecture.md`](architecture.md) → Widget data path).
 
 WidgetKit specifics that matter:
 
@@ -138,7 +139,7 @@ Constraints respected:
 ## Cut order if M1 slips
 
 1. Spotlight indexing / `.userActivity` → M2.
-2. Large widget — small + medium covers the demo.
+2. ~~Large widget — small + medium covers the demo.~~ **Shipped 2026-07-02** — no longer a cut-target; small + medium + large all ship in M1.
 3. `⋯` menu in detail bottom bar (Open as JSON) — Archive alone is enough for M1.
 4. Search — chronological scan covers <50 digests; revisit if the inbox grows.
 

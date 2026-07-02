@@ -59,14 +59,38 @@ private func digest(
     #expect(snap.rows.map(\.id) == ["urgent", "normal", "low"])
 }
 
-@Test func snapshotBuildCapsAtThreeRows() {
-    let digests = (0..<6).map { i in
+@Test func snapshotBuildCapsAtFiveRows() {
+    // maxRows == 5 so the large widget can fill its 4–5 rows.
+    let digests = (0..<8).map { i in
         digest(id: "d\(i)", createdAt: "2026-06-2\(i)T09:00:00Z")
     }
-    let snap = WidgetSnapshot.build(from: digests, unreadCount: 6, capturedAt: Date())
-    #expect(snap.rows.count == 3)
+    let snap = WidgetSnapshot.build(from: digests, unreadCount: 8, capturedAt: Date())
+    #expect(snap.rows.count == 5)
     // unreadCount is passed through verbatim — NOT clamped to the row count.
-    #expect(snap.unreadCount == 6)
+    #expect(snap.unreadCount == 8)
+}
+
+@Test func snapshotBuildTotalDefaultsToDigestCount() {
+    // When the caller has the full (non-archived) set in hand and passes no
+    // explicit total, `total` reflects the full count even though rows cap at 5.
+    let digests = (0..<8).map { i in
+        digest(id: "d\(i)", createdAt: "2026-06-2\(i)T09:00:00Z")
+    }
+    let snap = WidgetSnapshot.build(from: digests, unreadCount: 8, capturedAt: Date())
+    #expect(snap.rows.count == 5)
+    #expect(snap.total == 8)   // full inbox size → drives "View all 8 →"
+}
+
+@Test func snapshotBuildTotalHonorsExplicitServerValue() {
+    // The widget passes the server's `total` even when it only received a few
+    // rows in /summary.latest — so the footer reflects the real inbox size.
+    let digests = [
+        digest(id: "a", createdAt: "2026-06-29T09:00:00Z"),
+        digest(id: "b", createdAt: "2026-06-28T09:00:00Z"),
+    ]
+    let snap = WidgetSnapshot.build(from: digests, unreadCount: 2, total: 12, capturedAt: Date())
+    #expect(snap.rows.count == 2)
+    #expect(snap.total == 12)
 }
 
 @Test func snapshotBuildCarriesRowFields() {
@@ -89,12 +113,14 @@ private func digest(
     let original = WidgetSnapshot.build(
         from: [digest(id: "a", createdAt: "2026-06-29T09:00:00Z")],
         unreadCount: 4,
+        total: 9,
         capturedAt: captured
     )
     WidgetSnapshotStore.write(original)
 
     let read = try #require(WidgetSnapshotStore.read())
     #expect(read.unreadCount == 4)
+    #expect(read.total == 9)
     #expect(read.rows.map(\.id) == ["a"])
     // Date survives the JSON round-trip to the second.
     #expect(abs(read.capturedAt.timeIntervalSince(captured)) < 1)

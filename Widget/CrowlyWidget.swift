@@ -1,8 +1,10 @@
-// CrowlyWidget — the reader widget. Two sizes:
+// CrowlyWidget — the reader widget. Three sizes:
 //   - systemSmall : unread count + the latest digest's bottom_line
 //   - systemMedium: top 2–3 most-recent digests (job color stripe + title +
 //                   bottom_line), each row `widgetURL`-deeplinks to
 //                   `crowly://digest/<id>`
+//   - systemLarge : same shape as medium, up to 5 rows + a "View all N →"
+//                   footer deeplinking to `crowly://inbox` (ux.md § widget)
 //
 // No interactivity — taps open the app via the row's widget URL. Hard
 // invariant (CLAUDE.md): the widget is read-only — `Link`-deeplink rows only,
@@ -29,6 +31,10 @@ struct CrowlyEntry: TimelineEntry {
     let rows: [WidgetDigestRow]
     let unreadCount: Int
     let latestBottomLine: String?
+    /// Total non-archived digests (≥ `rows.count`). Only the large widget uses
+    /// it, for the "View all N →" footer. Defaults to `rows.count` so small/
+    /// medium and the previews don't have to supply it.
+    var total: Int = 0
 }
 
 // MARK: - Completion box
@@ -108,6 +114,9 @@ struct CrowlyProvider: TimelineProvider {
                 let snapshot = WidgetSnapshot.build(
                     from: summary.latest.map(\.digest),
                     unreadCount: summary.unread_count,
+                    // Server's non-archived total (older companion → nil →
+                    // falls back to the row count, so the footer just hides).
+                    total: summary.total,
                     capturedAt: now
                 )
                 // Cache so a later failed fetch (or the app's first render)
@@ -133,7 +142,8 @@ struct CrowlyProvider: TimelineProvider {
             date: date,
             rows: snapshot.rows,
             unreadCount: snapshot.unreadCount,
-            latestBottomLine: snapshot.rows.first?.bottomLine
+            latestBottomLine: snapshot.rows.first?.bottomLine,
+            total: snapshot.total
         )
     }
 
@@ -162,7 +172,28 @@ struct CrowlyWidgetEntryView: View {
         switch family {
         case .systemMedium: mediumLayout
         case .systemSmall:  smallLayout
+        case .systemLarge:  largeLayout
         default:            mediumLayout
+        }
+    }
+
+    // MARK: - Header
+
+    /// Shared header row (app glyph + name + unread count) used by the medium
+    /// and large layouts so they stay visually identical.
+    private var header: some View {
+        HStack(spacing: Space.s) {
+            Image(systemName: "tray.full")
+                .widgetAccentable()
+            Text("Crowly")
+                .font(.caption.weight(.semibold))
+            Spacer()
+            if entry.unreadCount > 0 {
+                Text("\(entry.unreadCount) unread")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .widgetAccentable()
+            }
         }
     }
 
@@ -170,19 +201,7 @@ struct CrowlyWidgetEntryView: View {
 
     private var mediumLayout: some View {
         VStack(alignment: .leading, spacing: Space.s) {
-            HStack(spacing: Space.s) {
-                Image(systemName: "tray.full")
-                    .widgetAccentable()
-                Text("Crowly")
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                if entry.unreadCount > 0 {
-                    Text("\(entry.unreadCount) unread")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .widgetAccentable()
-                }
-            }
+            header
 
             if entry.rows.isEmpty {
                 Spacer(minLength: 0)
@@ -201,6 +220,51 @@ struct CrowlyWidgetEntryView: View {
                     }
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
+            }
+        }
+        .padding(Space.m)
+        .containerBackground(for: .widget) { Color.clear }
+    }
+
+    // MARK: - Large
+
+    /// `.systemLarge` — same shape as medium, but up to 5 rows plus a
+    /// "View all N →" footer that deeplinks to the inbox root (ux.md § widget).
+    /// Read-only, like every widget size: `Link` rows only, no `Button(intent:)`.
+    private var largeLayout: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            header
+
+            if entry.rows.isEmpty {
+                Spacer(minLength: 0)
+                HStack {
+                    Spacer()
+                    Text("No digests yet.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                Spacer(minLength: 0)
+            } else {
+                VStack(spacing: Space.xs) {
+                    ForEach(entry.rows.prefix(5)) { row in
+                        WidgetDigestRowView(row: row)
+                    }
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
+
+                // Footer: only when there's more in the inbox than we can show.
+                if entry.total > entry.rows.count {
+                    Link(destination: URL(string: "crowly://inbox")!) {
+                        HStack(spacing: Space.xs) {
+                            Text("View all \(entry.total)")
+                            Image(systemName: "arrow.right")
+                        }
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .widgetAccentable()
+                    }
+                }
             }
         }
         .padding(Space.m)
@@ -289,7 +353,7 @@ struct CrowlyWidget: Widget {
         }
         .configurationDisplayName("Crowly")
         .description("Your latest digests")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }
 }
@@ -347,5 +411,53 @@ struct CrowlyWidgetBundle: WidgetBundle {
         ],
         unreadCount: 3,
         latestBottomLine: "Two major model releases this weekend."
+    )
+}
+
+#Preview(as: .systemLarge) {
+    CrowlyWidget()
+} timeline: {
+    CrowlyEntry(
+        date: .now,
+        rows: [
+            WidgetDigestRow(
+                id: "dgst_2026-06-29_ai-news",
+                jobId: "ai-news-daily",
+                title: "AI news — Monday roundup",
+                bottomLine: "Two major model releases this weekend.",
+                createdAt: .now
+            ),
+            WidgetDigestRow(
+                id: "dgst_2026-06-29_weather",
+                jobId: "weather-local",
+                title: "Severe thunderstorm watch",
+                bottomLine: "Gusts to 90 km/h possible; 2 PM–9 PM.",
+                createdAt: .now
+            ),
+            WidgetDigestRow(
+                id: "dgst_2026-06-28_community",
+                jobId: "harmony-weekly-public-digest",
+                title: "Harmony Community — weekly digest",
+                bottomLine: "Council met Thursday — two bylaw drafts in public comment.",
+                createdAt: .now
+            ),
+            WidgetDigestRow(
+                id: "dgst_2026-06-28_reminder",
+                jobId: "reminders-daily",
+                title: "Reminder — recycling pickup",
+                bottomLine: "Bins out by 7 AM Monday.",
+                createdAt: .now
+            ),
+            WidgetDigestRow(
+                id: "dgst_2026-06-27_market-pulse",
+                jobId: "market-pulse-weekly",
+                title: "Market Pulse — weekly digest",
+                bottomLine: "Nothing actionable. Two headlines flagged for context.",
+                createdAt: .now
+            )
+        ],
+        unreadCount: 5,
+        latestBottomLine: "Two major model releases this weekend.",
+        total: 8
     )
 }

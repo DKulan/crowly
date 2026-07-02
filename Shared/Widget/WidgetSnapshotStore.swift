@@ -49,31 +49,47 @@ struct WidgetDigestRow: Identifiable, Hashable, Codable, Sendable {
 
 // MARK: - Snapshot
 
-/// A serialisable snapshot of the widget surface: the latest few rows plus the
-/// authoritative unread count, stamped with when it was captured so a
-/// fallback render can decide how much to trust it.
+/// A serialisable snapshot of the widget surface: the latest few rows, the
+/// authoritative unread count, and the total (non-archived) digest count for
+/// the large widget's "View all N →" footer — stamped with when it was
+/// captured so a fallback render can decide how much to trust it.
 struct WidgetSnapshot: Codable, Sendable {
     let rows: [WidgetDigestRow]
     let unreadCount: Int
+    /// Total non-archived digests (≥ `rows.count`). Backs the large widget's
+    /// "View all N →" footer, shown only when `total > rows.count`.
+    let total: Int
     let capturedAt: Date
 
-    init(rows: [WidgetDigestRow], unreadCount: Int, capturedAt: Date) {
+    init(rows: [WidgetDigestRow], unreadCount: Int, total: Int, capturedAt: Date) {
         self.rows = rows
         self.unreadCount = unreadCount
+        self.total = total
         self.capturedAt = capturedAt
     }
 
+    /// Max rows carried — enough to fill the `.systemLarge` widget (4–5 rows
+    /// per ux.md). Small/medium render fewer from the same snapshot.
+    static let maxRows = 5
+
     /// Build a snapshot from digests. Shared by the app (its `/list` view)
     /// and the widget (its `/summary` view) so both project + sort rows
-    /// identically: newest-first, urgency breaking a same-instant tie, top 3.
-    /// `unreadCount` is passed in — the app derives it from local state, the
-    /// widget takes the server's authoritative `unread_count`.
-    static func build(from digests: [Digest], unreadCount: Int, capturedAt: Date) -> WidgetSnapshot {
+    /// identically: newest-first, urgency breaking a same-instant tie, capped
+    /// at `maxRows`. `unreadCount` and `total` are passed in — the app derives
+    /// them from local state, the widget takes the server's `unread_count` /
+    /// `total`. `total` defaults to the digest count when the caller has the
+    /// full (non-archived) set in hand.
+    static func build(
+        from digests: [Digest],
+        unreadCount: Int,
+        total: Int? = nil,
+        capturedAt: Date
+    ) -> WidgetSnapshot {
         let sorted = digests.sorted { lhs, rhs in
             if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
             return lhs.urgency > rhs.urgency
         }
-        let rows = sorted.prefix(3).map { d in
+        let rows = sorted.prefix(maxRows).map { d in
             WidgetDigestRow(
                 id: d.id,
                 jobId: d.jobId,
@@ -82,7 +98,12 @@ struct WidgetSnapshot: Codable, Sendable {
                 createdAt: d.createdAt
             )
         }
-        return WidgetSnapshot(rows: rows, unreadCount: unreadCount, capturedAt: capturedAt)
+        return WidgetSnapshot(
+            rows: rows,
+            unreadCount: unreadCount,
+            total: total ?? digests.count,
+            capturedAt: capturedAt
+        )
     }
 }
 
@@ -97,8 +118,10 @@ enum WidgetSnapshotStore {
     static let appGroup = "group.com.crowly"
 
     /// Bump the suffix if the stored shape ever changes incompatibly — an old
-    /// snapshot under a stale key is simply ignored (decode returns nil).
-    private static let key = "widget_snapshot_v1"
+    /// snapshot under a stale key is simply ignored (decode returns nil). v2
+    /// added the non-optional `total` field (large-widget footer), so a v1
+    /// blob wouldn't decode; the bump avoids relying on that failure path.
+    private static let key = "widget_snapshot_v2"
 
     private static var defaults: UserDefaults? {
         UserDefaults(suiteName: appGroup)

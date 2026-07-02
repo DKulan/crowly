@@ -611,7 +611,7 @@ struct CrowlyWidgetEntryView: View {
         switch family {
         case .systemMedium: mediumLayout
         case .systemSmall:  smallLayout
-        case .systemLarge:  largeLayout                 // M1 cut-target; see ux.md cut order
+        case .systemLarge:  largeLayout                 // shipped 2026-07-02 (was a cut-target)
         default:            mediumLayout
         }
     }
@@ -673,7 +673,7 @@ struct CrowlyWidgetEntryView: View {
         }
     }
 
-    private var largeLayout: some View {                    // simple extension of medium
+    private var largeLayout: some View {                    // shipped M1 (2026-07-02): same header, up to 5 rows + a "View all N →" footer → crowly://inbox
         VStack(alignment: .leading, spacing: Space.s) {
             HStack(spacing: Space.s) {
                 Image(systemName: "tray.full").widgetAccentable()

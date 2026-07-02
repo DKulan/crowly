@@ -114,9 +114,14 @@ struct ListResponse: Decodable, Sendable {
 }
 
 /// Response wrapper for `GET /summary`.
+///
+/// `total` is the count of non-archived digests, backing the large widget's
+/// "View all N →" footer. Optional + additive: an older companion that doesn't
+/// send it decodes fine (nil), and the widget just omits the footer.
 struct SummaryResponse: Decodable, Sendable {
     let unread_count: Int
     let latest: [DigestEnvelope]
+    let total: Int?
 }
 
 /// Response wrapper for `GET /health`.
