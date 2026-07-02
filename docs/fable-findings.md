@@ -193,6 +193,8 @@ Likely impact: acceptable for M1 unless public exposure/privacy bar changes.
 
 ## Recommended order of work
 
+> **Reconciled 2026-07-02.** Items 1–2 are done (see the resolution notes above). Items **4 and 6 are overtaken by events**: the owner **waived the two-week M1 validation gate on 2026-07-02** (proceeding on daily-use conviction), so "start the clock only after the live widget" / "avoid further M2 work until the M1 validation produces evidence" no longer describe the plan. The kill criteria are retained as a fallback (`docs/validation.md`); the review's original wording is preserved below as design history.
+
 1. Close `/pair` exposure and rotate the token.
 2. Build the live widget path:
    - App Group/shared storage;

@@ -107,7 +107,20 @@ enum JobColor {
 
 **Why FNV-1a not `String.hashValue`:** Swift randomizes the seed of its native hash per process, so the same `job_id` would change color across launches — unusable.
 
-#### 1.1.3 Unread-dot states (two; never a badge stack)
+#### 1.1.3 Callout-variant colors (schema v2 content blocks)
+
+A v2 `callout` block (`schema.md` § 1.3) carries a `variant` that maps to a tint + SF Symbol. The tint is used **only** on the callout's leading icon and its left accent bar — the callout body text stays `.primary` (the legibility rule: emphasis via chrome, never by tinting prose). Kept distinct from urgency: a callout's emphasis is authored per-block, independent of the digest's overall `urgency`. Implemented as `Color.callout(_:)` + `CalloutVariant.symbolName` in `Shared/Theme/Tokens.swift`.
+
+| `variant` | Color token | SF Symbol |
+|---|---|---|
+| `info` (default) | `crowly.accent` (`.accentColor`) | `info.circle.fill` |
+| `warning` | `crowly.warning` (orange) | `exclamationmark.triangle.fill` |
+| `success` | `crowly.success` (green) | `checkmark.circle.fill` |
+| `critical` | `crowly.destructive` (red) | `exclamationmark.octagon.fill` |
+
+Unknown/missing `variant` → `info` (tolerant default, per `schema.md` § 1.3).
+
+#### 1.1.4 Unread-dot states (two; never a badge stack)
 
 `UnreadDot` is the single source of truth for cell read/unread state. Per `ux.md` § Inbox.
 
@@ -211,7 +224,7 @@ struct UnreadDot: View {
 }
 ```
 
-**States.** See §1.1.3.
+**States.** See §1.1.4.
 
 **Sketch.**
 ```swift
@@ -377,6 +390,21 @@ struct DigestCell: View {
     }
 }
 ```
+
+### 2.5 Content-block renderers (schema v2)
+
+The detail view renders a digest's `content` array (`schema.md` § 1.3) as a stack of per-type views (`App/Views/ContentBlockView.swift`). Each reuses the existing token vocabulary — `Space`, `Radius`, the `Font` roles, and the semantic colors above — so blocks sit inside the reader's visual grammar rather than beside it. Inline text (paragraph / callout / list items) runs through `CrowlyMarkdown.attributed(_:)` for the restricted `**bold**` / `*italic*` / `` `code` `` / `[link](url)` subset; block text stays `.primary` (legibility). Empty / whitespace-only blocks are filtered out before rendering (`ContentBlock.isRenderable`), and an unknown block type surfaces its `text` as a plain paragraph if it has one, else nothing — never raw JSON.
+
+| Block | Rendering | Tokens used |
+|---|---|---|
+| `paragraph` | Inline-markdown `Text`, `.body`, full-width leading | `Font.body` |
+| `heading` | `Font.crowlyCellTitle` (`.headline`), small top pad | `Space.xs` |
+| `list` | Marker + item rows; marker is `•` (bullet) or `1.` `2.` … (ordered), `.secondary` | `Space.s` |
+| `callout` | Icon + optional bold `title` + body in a tinted card with a **left accent bar**; fill is `Color.callout(variant).opacity(0.10)`, bar + icon are `Color.callout(variant)` (§1.1.3) | `Radius.surface`, `Space.l`, `Space.m` |
+| `metrics` | Two-column `LazyVGrid` of value-over-label cards; value `.title3.semibold`, label `.caption` uppercase `.secondary`; card fill `crowly.surface.elevated` | `Radius.card`, `Space.m` |
+| `divider` | System `Divider` with vertical padding | `Space.xs` |
+
+The callout card is the one block that draws a colored surface — and it draws it as **chrome around** the prose (tinted fill + accent bar + icon), never by tinting the reading text. This keeps the "glass/tint = chrome, opaque = content" rule intact: a callout is emphasis, not an action (`schema.md` § What's deliberately not in the schema).
 
 ---
 

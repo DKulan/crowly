@@ -51,7 +51,12 @@ import urllib.request
 
 # The schema version this emitter speaks. Additive-only: bump only when the
 # payload gains fields, never when one is removed/repurposed (docs/schema.md).
-SCHEMA_VERSION = 1
+# v2 adds the optional top-level `content` field — an ordered array of typed
+# blocks (paragraph/heading/list/callout/metrics/divider). v1 remains valid:
+# `summary`/`sections` are still accepted as the fallback for simple digests,
+# and unknown *block* types are passed through unchanged (forward-compat, so a
+# future v3 block survives a round-trip through this v2 emitter/companion).
+SCHEMA_VERSION = 2
 
 # Default source string when the caller doesn't set one. Informational only;
 # not used for routing (docs/schema.md field notes).
@@ -69,8 +74,18 @@ REQUIRED_FROM_CALLER = ("job_id", "title", "bottom_line", "urgency")
 # dropped — a v2 field survives a round-trip through this v1 emitter.
 KNOWN_KEYS = {
     "schema_version", "id", "job_id", "source", "title", "created_at",
-    "urgency", "bottom_line", "summary", "sections", "sources",
+    "urgency", "bottom_line", "summary", "sections", "sources", "content",
 }
+
+# Block `type` discriminators this emitter knows how to shape-check. A block
+# whose type is NOT in here is accepted and passed through unchanged (only
+# required to be a JSON object) — a future v3 block type must survive a
+# round-trip through this v2 emitter/companion (docs/schema.md forward-compat).
+KNOWN_BLOCK_TYPES = frozenset(
+    {"paragraph", "heading", "list", "callout", "metrics", "divider"}
+)
+VALID_LIST_STYLES = ("bullet", "ordered")
+VALID_CALLOUT_VARIANTS = ("info", "warning", "success", "critical")
 
 
 class EmitError(Exception):
@@ -199,8 +214,89 @@ def validate(digest: dict) -> None:
                 if not isinstance(src, dict) or "title" not in src or "url" not in src:
                     errs.append(f"sources[{i}] must have 'title' and 'url'")
 
+    # content: optional (v2). If present, an ordered array of typed blocks.
+    # Only KNOWN block types get their shape validated; an unknown type is
+    # accepted so long as the block is a JSON object (forward-compat — a
+    # future v3 block must round-trip through this v2 validator unchanged).
+    content = digest.get("content")
+    if content is not None:
+        if not isinstance(content, list):
+            errs.append("content must be an array")
+        else:
+            for i, block in enumerate(content):
+                errs.extend(_validate_block(i, block))
+
     if errs:
         raise EmitError("invalid digest:\n  - " + "\n  - ".join(errs))
+
+
+def _validate_block(i: int, block) -> list[str]:
+    """Shape-check one content block; return a (possibly empty) list of errors.
+
+    Every block must be a JSON object. If its `type` is one of the six known
+    types, its required shape is enforced (per docs/schema.md). If `type` is
+    unknown, the block passes with no shape check — a future v3 block type must
+    survive a round-trip through this v2 emitter unchanged, so an older
+    companion can never reject newer content.
+    """
+    if not isinstance(block, dict):
+        return [f"content[{i}] must be an object"]
+
+    btype = block.get("type")
+    # Unknown (or missing) type → passthrough. We don't gate on unknown types;
+    # only the six known ones get shape-checked.
+    if btype not in KNOWN_BLOCK_TYPES:
+        return []
+
+    errs: list[str] = []
+    if btype in ("paragraph", "heading"):
+        if not isinstance(block.get("text"), str):
+            errs.append(f"content[{i}] ({btype}) must have a string 'text'")
+
+    elif btype == "list":
+        items = block.get("items")
+        if not isinstance(items, list):
+            errs.append(f"content[{i}] (list) must have an array 'items'")
+        else:
+            for j, item in enumerate(items):
+                if not isinstance(item, str):
+                    errs.append(f"content[{i}].items[{j}] (list) must be a string")
+        style = block.get("style")
+        if style is not None and style not in VALID_LIST_STYLES:
+            errs.append(
+                f"content[{i}] (list) 'style' must be one of "
+                f"{VALID_LIST_STYLES}, got {style!r}"
+            )
+
+    elif btype == "callout":
+        if not isinstance(block.get("text"), str):
+            errs.append(f"content[{i}] (callout) must have a string 'text'")
+        variant = block.get("variant")
+        if variant is not None and variant not in VALID_CALLOUT_VARIANTS:
+            errs.append(
+                f"content[{i}] (callout) 'variant' must be one of "
+                f"{VALID_CALLOUT_VARIANTS}, got {variant!r}"
+            )
+        title = block.get("title")
+        if title is not None and not isinstance(title, str):
+            errs.append(f"content[{i}] (callout) 'title' must be a string")
+
+    elif btype == "metrics":
+        items = block.get("items")
+        if not isinstance(items, list):
+            errs.append(f"content[{i}] (metrics) must have an array 'items'")
+        else:
+            for j, item in enumerate(items):
+                if (not isinstance(item, dict)
+                        or not isinstance(item.get("label"), str)
+                        or not isinstance(item.get("value"), str)):
+                    errs.append(
+                        f"content[{i}].items[{j}] (metrics) must have string "
+                        f"'label' and 'value'"
+                    )
+
+    # divider: no other fields required.
+    return errs
 
 
 def _parse_iso(text: str) -> bool:

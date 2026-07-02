@@ -13,6 +13,12 @@ struct DigestDetailView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
 
+    /// v2 content blocks worth rendering (empty/whitespace-only blocks dropped).
+    /// When this is empty the view falls back to the v1 summary + sections.
+    private var renderableBlocks: [ContentBlock] {
+        digest.content.filter(\.isRenderable)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.xl) {
@@ -36,20 +42,32 @@ struct DigestDetailView: View {
                     )
                 }
 
-                // Summary — the optional prose paragraph above the section grid.
-                if let summary = digest.summary, !summary.isEmpty {
-                    Text(summary)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                }
-
-                // Body sections.
-                if !digest.sections.isEmpty {
+                // Body. schema v2: if the digest carries structured `content`
+                // blocks, render those; otherwise fall back to the v1
+                // summary + sections shape. (A v2 emitter sends one or the
+                // other; both are additive-only and never rendered together.)
+                if !renderableBlocks.isEmpty {
                     VStack(alignment: .leading, spacing: Space.l) {
-                        ForEach(digest.sections) { s in
-                            VStack(alignment: .leading, spacing: Space.s) {
-                                Text(s.heading).font(.crowlyCellTitle)
-                                Text(s.body).font(.body)
+                        ForEach(Array(renderableBlocks.enumerated()), id: \.offset) { _, block in
+                            ContentBlockView(block: block)
+                        }
+                    }
+                } else {
+                    // Summary — the optional prose paragraph above the section grid.
+                    if let summary = digest.summary, !summary.isEmpty {
+                        Text(summary)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                    }
+
+                    // Body sections.
+                    if !digest.sections.isEmpty {
+                        VStack(alignment: .leading, spacing: Space.l) {
+                            ForEach(digest.sections) { s in
+                                VStack(alignment: .leading, spacing: Space.s) {
+                                    Text(s.heading).font(.crowlyCellTitle)
+                                    Text(s.body).font(.body)
+                                }
                             }
                         }
                     }

@@ -75,11 +75,15 @@ except ImportError as _e:  # pragma: no cover - bootstrap only
 from companion.store import Store, VALID_STATES
 
 
-# Schema versions the app's decoder supports. M1 is v1 only. When the
-# emitter or app gains a v2 (additive-only, per docs/schema.md § Versioning),
-# bump this tuple — `/health` reports it so a freshly-paired app can tell
-# whether the companion it's talking to is still in its support window.
-SCHEMA_VERSIONS_SUPPORTED: tuple[int, ...] = (1,)
+# Schema versions the app's decoder supports. v2 adds the optional top-level
+# `content` array of typed blocks (additive-only, per docs/schema.md
+# § Versioning); v1 digests (summary/sections) remain valid. `/health` reports
+# this tuple so a freshly-paired app can tell whether the companion it's
+# talking to is still in its support window. Note: ingest validation goes
+# through the shared crowly_emit.validate(), which does NOT gate on the
+# schema_version *value* (it only requires it be an int) — so bumping this
+# tuple is purely an advertisement; no ingest-path change is needed.
+SCHEMA_VERSIONS_SUPPORTED: tuple[int, ...] = (1, 2)
 
 
 # --------------------------------------------------------------------------

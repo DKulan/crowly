@@ -8,7 +8,8 @@ The **emitter kit** is the input side of Crowly (`docs/architecture.md` → comp
 The split that makes this work: **the LLM writes content; the helper guarantees the envelope.** The model is good at prose and unreliable at stable ids, timestamps, and required-field discipline — so those are the helper's job, not the model's.
 
 ```
-LLM (cron) fills   →  title, bottom_line, summary, sections, sources, urgency
+LLM (cron) fills   →  title, bottom_line, urgency, sources,
+                      + body: content blocks (v2) OR summary/sections (v1)
 helper guarantees  →  schema_version, id, created_at, validation, transport
 ```
 
@@ -25,7 +26,8 @@ Additive to `docs/schema.md` (which defines the digest payload) and `docs/archit
 | **Auth** | `Authorization: Bearer <pairing_token>` |
 | **Body** | `Content-Type: application/json` — one digest object per `docs/schema.md §1` |
 | **Idempotency** | Keyed on `id`. Re-POSTing the same `id` **updates**, never duplicates. |
-| **Unknown fields** | Stored **verbatim** in the digest blob (`schema.md` § Versioning). Never stripped. |
+| **Schema version** | `SCHEMA_VERSION = 2` (helper stamps it). The companion accepts `1` and `2` (`SCHEMA_VERSIONS_SUPPORTED = (1, 2)`; `architecture.md` § Companion). |
+| **Unknown fields** | Stored **verbatim** in the digest blob (`schema.md` § Versioning). Never stripped — this includes unknown `content` **block types**. |
 
 ### Responses
 
@@ -41,9 +43,17 @@ The companion **validates and rejects malformed digests with a clear 4xx** so th
 
 ### Required vs. stamped fields
 
-Required in the stored digest (matches the app's decoder, `Shared/Models/Schema.swift`): `schema_version`, `id`, `job_id`, `source`, `title`, `created_at`, `urgency`, `bottom_line`. Optional: `summary`, `sections[]`, `sources[]`.
+Required in the stored digest (matches the app's decoder, `Shared/Models/Schema.swift`): `schema_version`, `id`, `job_id`, `source`, `title`, `created_at`, `urgency`, `bottom_line`. Optional body: **`content[]` (v2)** *or* `summary` + `sections[]` (v1). Also optional: `sources[]`.
 
-Of those, the **helper stamps** `schema_version`, `id`, `created_at` (and defaults `source`) — the caller/LLM must **not** set them. The caller supplies `job_id`, `title`, `bottom_line`, `urgency`, and any optional content.
+Of those, the **helper stamps** `schema_version` (`2`), `id`, `created_at` (and defaults `source`) — the caller/LLM must **not** set them. The caller supplies `job_id`, `title`, `bottom_line`, `urgency`, `sources`, and the body — either a `content` block array or the v1 `summary`/`sections` (pick one; see `schema.md` § Body relationship).
+
+### Content-block validation
+
+When the caller supplies `content`, the helper validates it client-side (`crowly_emit.py`; the companion re-validates server-side — the client check is a fast-fail courtesy, not the trust boundary):
+
+- **Known block types** (`paragraph` / `heading` / `list` / `callout` / `metrics` / `divider`) are shape-checked — required fields present, `items` an array, etc. A malformed known block is a validation error (exit `2`), so the cron author sees it in their logs.
+- **Unknown block types are passed through**, not rejected — the block-level analogue of unknown top-level fields (`schema.md` § Versioning). This is what lets a newer emitter emit a v3 block through an older validator; the companion stores it verbatim and an older reader degrades gracefully.
+- **`summary`/`sections` remain valid** — a v1-shaped body still passes validation unchanged. The helper doesn't require `content`.
 
 > **Not in scope for ingest:** read/archive **state writes** are a separate companion endpoint the *app* calls, not the emitter (`architecture.md` § Companion → Store). The emitter only ever creates/updates digest content. `urgency` is set by the emitter and drives in-app sort order + widget surfacing downstream (`schema.md` → Field notes); the emitter just needs to set it honestly.
 

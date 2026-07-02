@@ -180,7 +180,10 @@ struct CrowlyWidgetEntryView: View {
     // MARK: - Header
 
     /// Shared header row (app glyph + name + unread count) used by the medium
-    /// and large layouts so they stay visually identical.
+    /// and large layouts so they stay visually identical. The unread count
+    /// renders as a filled pill when there's anything new — a stronger ambient
+    /// "you have unread" cue than plain grey text (the widget is the MVP's only
+    /// habit cue, so the glance has to read at arm's length).
     private var header: some View {
         HStack(spacing: Space.s) {
             Image(systemName: "tray.full")
@@ -189,9 +192,12 @@ struct CrowlyWidgetEntryView: View {
                 .font(.caption.weight(.semibold))
             Spacer()
             if entry.unreadCount > 0 {
-                Text("\(entry.unreadCount) unread")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Text("\(entry.unreadCount) new")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, Space.s)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(.tint))
                     .widgetAccentable()
             }
         }
@@ -325,10 +331,20 @@ struct WidgetDigestRowView: View {
                     .widgetAccentable()
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(row.title)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
-                        .foregroundStyle(.primary)
+                    HStack(alignment: .firstTextBaseline, spacing: Space.xs) {
+                        Text(row.title)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                            .foregroundStyle(.primary)
+                        Spacer(minLength: Space.xs)
+                        // Relative age ("2h", "now") — freshness at a glance,
+                        // right-aligned so titles still left-align cleanly.
+                        Text(row.createdAt, format: .relative(presentation: .numeric, unitsStyle: .narrow))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                    }
                     Text(row.bottomLine)
                         .font(.caption2)
                         .lineLimit(2)

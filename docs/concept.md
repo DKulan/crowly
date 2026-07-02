@@ -32,7 +32,7 @@ The job is **reading, scanning, archiving, searching** recurring agent output wi
 
 ## Target users
 
-- **First:** Daniel himself (Hermes deployment) — the M1 validation.
+- **First:** Daniel himself (Hermes deployment) — the M1 validation surface (the formal two-week gate was **waived 2026-07-02**; daily personal use continues).
 - **Then:** other **Hermes self-hosters**, who already run a VPS and can deploy the companion the same way they deployed Hermes.
 - Broader self-hosted AI/automation users later. Not a mainstream consumer app: the public App Store listing is mostly a **demo + a funnel to the self-hosting docs** for the few who self-host. That's consistent with the power-user audience.
 
@@ -54,9 +54,9 @@ Closest neighbours are AI readers — but they curate feeds for you (one vendor 
 1. **Niche timing.** Few people run recurring agent jobs *and* self-host. Audience is small/technical now. Mitigation: built for the Daniel-of-6-months and the showcase power-user; the niche is growing as agent frameworks mature.
 2. **Reader commoditization.** If general-purpose AI readers add self-hosting and arbitrary-source ingest, differentiation narrows. Defense: be best-in-class at the agent-output reader shape (widget, schema, cron-native ergonomics) and ship the emitter kit so any agent can target Crowly in one drop-in.
 3. **Platform capture.** Agent platforms may build their own inboxes. Defense: cross-agent delivery, self-hosted data, widget-first.
-4. **Overbuilding.** The public scope is still meaningful. Defense: **M1 gates M2** — build and behaviorally validate the single-user slice before the public-only layer.
+4. **Overbuilding.** The public scope is still meaningful. Defense was **M1 gates M2** — build and behaviorally validate the single-user slice before the public-only layer. That formal gate was **waived 2026-07-02** (owner decision; M2 proceeds on daily-use conviction), so the discipline now rests on the retained kill criteria (`docs/validation.md`) rather than a hard clock: if the reader stops earning its tap, pause the public build before widening further.
 5. **Notification sludge.** Not an MVP concern — the app doesn't send notifications. The widget and a manual app-open are the only surfaces for "what's new"; archive-and-undo is the primary triage; no notification-stacking by construction.
-6. **(The real one) Single-user pull.** Personal-first projects die when the builder stops reaching for it. Validation must be ruthless: no unprompted use in two weeks → stop at M1.
+6. **(The real one) Single-user pull.** Personal-first projects die when the builder stops reaching for it. The designed brake was ruthless validation — no unprompted use in two weeks → stop at M1 — but the owner **waived that gate 2026-07-02** and is proceeding on sustained daily use. The risk is unchanged; the mitigation is now the retained fallback (`docs/validation.md`): if daily use lapses, run the kill criteria before pouring more into the public layer.
 
 ## Resolved decisions (2026-06-29)
 

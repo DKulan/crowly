@@ -4,11 +4,17 @@
 // the positioning themes (AI news, weather, local community, reminders) and
 // exercise:
 //   - varied urgency (low / normal / high / urgent)
-//   - digests with sections + sources
-//   - pure bottom-line digests (no body sections, no sources)
-//   - the extras passthrough (one fixture carries a v2-only field)
+//   - schema **v2 structured content blocks** — every block type appears
+//     across the set (weather is the showcase: callout + metrics + heading +
+//     ordered list + divider + paragraph); AI-news mixes paragraph + list +
+//     inline markdown; community mixes heading + callout.
+//   - the v1 fallback shape (summary + sections) — market-pulse keeps it, so
+//     the detail view's "content else summary/sections" branch is covered.
+//   - pure bottom-line digests (no body, no sources) — the reminder.
+//   - the extras passthrough (market-pulse carries a v2-only field).
 //
-// These fixtures are compiled into BOTH the app and the widget — the widget
+// These fixtures double as the App Store marketing artifact, so they read like
+// real digests. They're compiled into BOTH the app and the widget — the widget
 // reads the same demo digests from Shared/, so no App Group or backend is
 // needed to demo the reader.
 
@@ -28,7 +34,7 @@ public enum DemoFixtures {
     // MARK: - 1. AI news summary (the flagship "what's new" digest)
 
     public static let aiNewsDigest = Digest(
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: "dgst_2026-06-29_ai-news",
         jobId: "ai-news-daily",
         source: "hermes-cron",
@@ -38,20 +44,19 @@ public enum DemoFixtures {
         createdAt: dateFrom("2026-06-29T07:15:00-04:00"),
         urgency: .normal,
         bottomLine: "Two major model releases this weekend. Image-gen pricing keeps falling; safety-eval benchmarks getting a refresh in July.",
+        // Summary retained (searchable — "safety benchmark" is exercised by the
+        // search tests) even though `content` is present: search reads
+        // title/bottom_line/summary, and this digest renders from `content`.
         summary: "Quiet weekend on the policy front; loud one on releases. Two frontier labs shipped updated flagship models within a day of each other, both leading on long-context reasoning. Separately, a coalition of eval houses announced a refresh of the public safety benchmark suite.",
-        sections: [
-            DigestSection(
-                heading: "Releases",
-                body: "Two frontier-lab flagship updates landed: incremental gains on math + code, large jumps on long-context retrieval. Pricing per 1M tokens dropped roughly 30% on both sides."
-            ),
-            DigestSection(
-                heading: "Evals",
-                body: "Public safety benchmark refresh announced for July. Adds adversarial prompt categories and a real-world-task harness. Submissions open mid-month."
-            ),
-            DigestSection(
-                heading: "Tooling",
-                body: "Image-gen API pricing fell again. A handful of indie editors now ship with on-device inference paths for redaction-style edits."
-            )
+        content: [
+            .paragraph(text: "Quiet weekend on the policy front; **loud one on releases.** Two frontier labs shipped updated flagship models within a day of each other, both leading on long-context reasoning."),
+            .heading(text: "Releases"),
+            .list(style: .bullet, items: [
+                "Two frontier-lab flagship updates landed — incremental gains on math + code, large jumps on long-context retrieval.",
+                "Pricing per 1M tokens dropped roughly *30%* on both sides.",
+            ]),
+            .heading(text: "Evals"),
+            .paragraph(text: "A coalition of eval houses announced a refresh of the public safety benchmark suite for July — adds adversarial prompt categories and a real-world-task harness. See [the announcement](https://crfm.stanford.edu/) for the submission window."),
         ],
         sources: [
             Source(
@@ -68,24 +73,37 @@ public enum DemoFixtures {
     // MARK: - 2. Weather digest (high urgency: a storm warning)
 
     public static let weatherDigest = Digest(
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: "dgst_2026-06-29_weather",
         jobId: "weather-local",
         source: "hermes-cron",
         title: "Weather — severe thunderstorm watch",
         createdAt: dateFrom("2026-06-29T06:00:00-04:00"),
+        // v2 showcase (see content below).
         urgency: .high,
         bottomLine: "Severe thunderstorm watch in effect 2 PM–9 PM. Gusts to 90 km/h possible; hail likely along the foothills.",
-        summary: "Environment Canada issued a severe thunderstorm watch for the region this afternoon. Confidence is moderate-to-high. Best chance of impactful weather is 4–7 PM. Patio furniture worth securing before noon.",
-        sections: [
-            DigestSection(
-                heading: "Timing",
-                body: "Cells fire mid-afternoon along the foothills, sweep east. Calgary core sees the leading edge around 4 PM."
+        // Showcase fixture: exercises every v2 block type — callout, metrics,
+        // heading, ordered list, divider, paragraph.
+        content: [
+            .callout(
+                variant: .warning,
+                title: "Severe thunderstorm watch",
+                text: "In effect **2 PM–9 PM**. Gusts to *90 km/h* and hail likely along the foothills. Secure loose patio items before noon."
             ),
-            DigestSection(
-                heading: "Tomorrow",
-                body: "Clearer behind the front. Highs near 22°C, light NW wind."
-            )
+            .metrics(items: [
+                Metric(label: "Peak window", value: "4–7 PM"),
+                Metric(label: "Max gust", value: "90 km/h"),
+                Metric(label: "Confidence", value: "Mod–High"),
+                Metric(label: "Hail risk", value: "Likely"),
+            ]),
+            .heading(text: "What to expect"),
+            .list(style: .ordered, items: [
+                "Cells fire mid-afternoon along the foothills and sweep east.",
+                "The Calgary core sees the leading edge around 4 PM.",
+                "Watch may upgrade to a warning if rotation is detected.",
+            ]),
+            .divider,
+            .paragraph(text: "**Tomorrow:** clearer behind the front. Highs near 22°C with a light NW wind."),
         ],
         sources: [
             Source(
@@ -98,7 +116,7 @@ public enum DemoFixtures {
     // MARK: - 3. Local community update (the schema-shaped "what's happening")
 
     public static let communityDigest = Digest(
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: "dgst_2026-06-28_community",
         jobId: "harmony-weekly-public-digest",
         source: "hermes-cron",
@@ -106,16 +124,15 @@ public enum DemoFixtures {
         createdAt: dateFrom("2026-06-28T09:00:00-04:00"),
         urgency: .low,
         bottomLine: "Council met Thursday — two new bylaw drafts in public comment, neither touching our parcel. Rec Society AGM Aug 12.",
-        summary: "Quiet week. Two new bylaw drafts entered the public-comment window — both are off-site levy revisions that don't touch our parcel directly. The Harmony Recreation Society AGM is on the calendar for Aug 12 at the community hall.",
-        sections: [
-            DigestSection(
-                heading: "Bylaw watch",
-                body: "Regional off-site levy updates remain under review. The amendment text isn't public yet — staff report due late July."
+        content: [
+            .paragraph(text: "Quiet week. Two new bylaw drafts entered the public-comment window — both off-site levy revisions that *don't touch our parcel* directly."),
+            .heading(text: "Bylaw watch"),
+            .paragraph(text: "Regional off-site levy updates remain under review. The amendment text isn't public yet — staff report due late July."),
+            .callout(
+                variant: .info,
+                title: "Save the date",
+                text: "Harmony Recreation Society **AGM — Aug 12, 7 PM**, at the community hall. Light agenda: treasurer's report and one trustee seat up for election."
             ),
-            DigestSection(
-                heading: "Events",
-                body: "Harmony Recreation Society AGM on Aug 12, 7 PM, at the community hall. Light agenda; treasurer's report and one trustee seat up for election."
-            )
         ],
         sources: [
             Source(

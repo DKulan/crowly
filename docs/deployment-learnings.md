@@ -10,6 +10,20 @@ runbook + the catalog of every snag that install flow must handle. **The
 Companion of `docs/onboarding.md` (the clean per-step runbook). This doc is the
 *war story* — what actually happened, why, and the fix.
 
+> **This is ONE topology, not the only one.** Everything below is accurate for
+> the setup it describes: a **VPS + Docker + existing proxy**, deployed by hand.
+> But future users run **heterogeneous** setups — some on a personal computer,
+> some on a VPS *without* Docker, some (like this one) on a VPS with Docker. The
+> companion is dependency-free Python 3 + sqlite3 and runs as a bare process via
+> `python3 -m companion` (`companion/server.py`); **Docker is a packaging
+> convenience, not a requirement**, and the `crowly-net` / container-networking
+> material below is one topology's problem, not a universal one. The
+> `setup-crowly` installer must **detect the host shape and adapt** (see § *What
+> the setup-crowly skill must do*), not hard-code this path. Keep the war story
+> as-is — it's the ground truth for its topology — but read it as *one branch*
+> the installer must handle, alongside the no-Docker and laptop branches. The
+> topology matrix lives in `docs/onboarding.md` § *Where the companion can run*.
+
 ## The environment we deployed into (a realistic target)
 
 - **VPS:** Hostinger VPS, root SSH. Already ran **Traefik** (owning :80/:443) and a
@@ -136,17 +150,46 @@ a plain `restart` reruns stale code; (3) you MUST pass
 
 ## What the `setup-crowly` skill must do (derived requirements)
 
-Given host Docker access, an agent *can* automate most of the deploy:
+**First requirement: detect the host shape and branch — don't assume this
+topology.** The steps below are the VPS+Docker branch (the one deployed); the
+installer must first figure out which world it's in and adapt. It must **not** be
+built VPS+Docker-only:
+
+- **Docker present?** If yes, the containerized path below. If no (a no-Docker
+  VPS or a personal computer), run the companion as a **bare process** —
+  `python3 -m companion`, env-var configured — behind a systemd unit for an
+  always-on host. Docker is a packaging convenience, not a requirement; the
+  container-networking snags (#5, `crowly-net`) simply don't exist on the bare
+  path.
+- **VPS or laptop?** If the host is a **personal computer that sleeps**, the
+  installer must **surface the always-on caveat** (pull-only → a sleeping
+  companion can't be pulled; the app/widget show the last snapshot until it
+  wakes — `docs/onboarding.md` § *Where the companion can run*). It must not
+  silently hand the user a companion that's unreachable half the day. Push is
+  deferred (`docs/roadmap.md` Phase 4); it is **not** the fix to offer here.
+- **Existing reverse proxy?** As in #2 — Traefik/nginx owning :80/:443 → route
+  via labels rather than colliding with a bundled Caddy.
+- **Cross-topology TLS default: Tailscale Funnel.** It's the one path that
+  spans a VPS, a no-Docker VPS, and a NAT'd home machine (no domain/DNS/ACME/open
+  ports), and the one an agent can realistically drive with a single auth click.
+
+Given host Docker access, an agent *can* automate most of the **VPS+Docker
+branch**:
 1. Get the companion image/bundle onto the host (published image solves #1).
-2. **Detect the environment**: existing proxy? Tailscale present? → pick TLS strategy.
+2. **Detect the environment**: Docker present? existing proxy? Tailscale present?
+   VPS vs. laptop? → pick the run mode + TLS strategy per the branching above.
 3. **Default to Tailscale Funnel** (#3): install tailscale, `tailscale up` (one
    human auth click), `tailscale funnel --bg 8787`, capture the public URL.
 4. Create `crowly-net`, run the companion on it, attach the agent container via
-   an override (#5).
+   an override (#5). *(Docker branch only — the bare-process branch skips this;
+   a co-located emitter just POSTs to `127.0.0.1:8787`.)*
 5. Generate the pairing token; write the **internal** address to the agent's
    emit env (#4) and surface the **external** Funnel URL + token as the pairing
    QR.
-6. Install the `emit-crowly-digest` skill (already built, self-contained).
+6. Install the `emit-crowly-digest` skill (already built, self-contained). The
+   emitter is stdlib-only Python (`emitter/crowly_emit.py`) — it runs anywhere
+   Python runs (container-Hermes, a laptop cron, a systemd timer, any script);
+   all it needs is the companion URL + bearer token.
 
 **The irreducibly-human steps** (even at M2, cannot be automated away):
 - Install the app (App Store tap).

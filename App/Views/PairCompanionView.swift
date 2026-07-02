@@ -31,10 +31,9 @@ struct PairCompanionView: View {
     @State private var tokenField: String = ""
     @State private var status: PairStatus = .idle
 
-    /// Hidden in M1 but wired for a follow-up. The QR path needs camera
-    /// permissions and on-device interaction; we structure the entry point
-    /// here so adding `AVFoundation` later doesn't require rearranging the
-    /// view tree.
+    /// Drives the QR scanner sheet (VisionKit). A successful scan fills the
+    /// URL + token fields and auto-validates; the camera-unavailable path
+    /// (Simulator / headless device) falls back to manual entry.
     @State private var showQRScanner: Bool = false
 
     var body: some View {
@@ -108,26 +107,25 @@ struct PairCompanionView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    // QR scan entry is intentionally non-functional in M1 —
-                    // the manual path is the verified one. Surfacing the
-                    // button keeps the affordance discoverable.
+                    // QR scan (VisionKit). Fills the form on a successful scan;
+                    // the manual fields below remain the always-works fallback
+                    // (and the only path where the camera is unavailable).
                     Button {
                         showQRScanner = true
                     } label: {
                         Label("Scan QR", systemImage: "qrcode.viewfinder")
                     }
-                    .disabled(true)
-                    .accessibilityHint("Camera-based pairing arrives in M2.")
+                    .accessibilityHint("Scan the pairing QR your companion printed.")
                 }
             }
             .sheet(isPresented: $showQRScanner) {
-                // Stubbed for M2. ContentUnavailableView keeps the UI honest.
-                ContentUnavailableView(
-                    "QR pairing coming soon",
-                    systemImage: "qrcode",
-                    description: Text("For now, enter your companion URL and token by hand.")
-                )
-                .presentationDetents([.medium])
+                QRPairScannerView { scannedURL, scannedToken in
+                    urlField = scannedURL
+                    tokenField = scannedToken
+                    // Scan already delivered both fields — validate straight away
+                    // so a good QR is a one-tap pair.
+                    Task { await validateAndPair() }
+                }
             }
         }
     }

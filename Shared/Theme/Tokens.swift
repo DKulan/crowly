@@ -69,6 +69,38 @@ public extension Color {
     static let crowlyMuted = Color(.systemGray)
 }
 
+// MARK: - Callout variants (schema v2 content blocks)
+//
+// Each `callout` block variant maps to a tint (used for the callout's left
+// accent + icon) and an SF Symbol. Mirrors docs/design-system.md § callout
+// variants. Colors are system semantic colors so dark mode / contrast inherit.
+
+public extension Color {
+    /// Tint for a v2 `callout` block, keyed by variant. Kept distinct from
+    /// `urgency(_:)` — a callout's emphasis is authored per-block, independent
+    /// of the digest's overall urgency.
+    static func callout(_ variant: CalloutVariant) -> Color {
+        switch variant {
+        case .info:     .accentColor
+        case .warning:  .crowlyWarning
+        case .success:  .crowlySuccess
+        case .critical: .crowlyDestructive
+        }
+    }
+}
+
+public extension CalloutVariant {
+    /// SF Symbol paired with each callout variant.
+    var symbolName: String {
+        switch self {
+        case .info:     "info.circle.fill"
+        case .warning:  "exclamationmark.triangle.fill"
+        case .success:  "checkmark.circle.fill"
+        case .critical: "exclamationmark.octagon.fill"
+        }
+    }
+}
+
 // MARK: - Urgency tinting
 
 public extension Color {

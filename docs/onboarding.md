@@ -6,9 +6,27 @@ The step-by-step a single user follows to install Crowly and connect it to their
 - 🔨 **needs building** — design is settled (see linked doc), code isn't there yet.
 - 👤 **irreducibly human** — a step automation can't take for the user.
 
-This is the **manual single-user path** (M1). The agent-driven seamless install — a Hermes `setup-crowly` skill that provisions the companion for the user — is **M2 "stranger onboarding"** (`docs/roadmap.md` § M2 step 7), and per the **M1-gates-M2** rule we don't build it until the two-week test (`docs/validation.md`) passes.
+This is the **manual single-user path** (M1). The agent-driven seamless install — a Hermes `setup-crowly` skill that provisions the companion for the user — is **M2 "stranger onboarding"** (`docs/roadmap.md` § M2 step 7). Under the original **M1-gates-M2** rule this waited on the two-week test (`docs/validation.md`); the owner **waived that gate 2026-07-02**, so M2 (including `setup-crowly`) is now in scope — the two-week test is retained as a fallback, not a blocker.
 
 > **Security rule for the future installer:** it must be a **pinned, reviewable Hermes skill**, never "tell the agent to fetch and run instructions from a live URL." Live-URL install is a supply-chain footgun — a compromised or spoofed page would run arbitrary commands on the user's VPS. Pin the skill, review the diff, then run it.
+
+---
+
+## Where the companion can run
+
+**The companion is dependency-free Python 3 + sqlite3** (`companion/server.py`, env-var configured via `Config.from_env`). It runs as a bare process — `python3 -m companion` — anywhere Python 3 runs. **Docker is a packaging convenience, not a requirement.** The Docker/Compose steps below are one concrete worked example (Daniel's VPS+Docker setup, the one in `docs/deployment-learnings.md`); they are not the only path. Users run heterogeneous setups, and the runbook (and the future `setup-crowly` installer) must span them:
+
+| Topology | Run the companion as | TLS approach | Always-on? |
+|---|---|---|---|
+| **VPS + Docker** (Daniel's setup) | `docker compose up` (bundled Caddy, or `docker-compose.local.yml` behind a tunnel) | Funnel default; bundled Caddy or existing-proxy labels for power users | Yes — server stays up |
+| **VPS, no Docker** | bare `python3 -m companion` (systemd unit / nohup); env vars set the token, DB path, port, public URL | Funnel default; systemd + Caddy (or existing proxy) as a power-user option | Yes — server stays up |
+| **Personal computer** (laptop/desktop at home) | bare `python3 -m companion` (or Docker if installed) | **Funnel** — works behind NAT with no public IP / port-forward, one auth click | **⚠ Caveat below** |
+
+- **Tailscale Funnel is the cross-topology unifier.** It gives a public `https://` hostname with valid TLS on *all three* — a VPS, a no-Docker VPS, and a laptop behind NAT — with no domain, DNS, ACME, or open ports. It's already the documented default TLS (`docs/architecture.md` § Networking); the reason to prefer it is precisely that it's the one path that spans setups. Existing-proxy (Traefik/nginx labels) and systemd + Caddy stay as power-user options where the host already terminates TLS.
+- **Why HTTPS at all:** the app refuses plain `http://` for any non-loopback host (App Transport Security; `CompanionClient.normalize` prepends `https://` when the scheme is missing). Whatever the topology, the app-facing URL must be `https://` with a publicly-trusted cert.
+- **⚠ Always-on caveat (personal-computer case).** Crowly is **pull-only** — the app and widget fetch from the companion; nothing pushes. **A companion on a laptop that sleeps can't be pulled**, so the app and widget show the *last snapshot* until the machine wakes. This is honest and unavoidable for a sometimes-off host: the pull model cannot engineer it away (push is deferred, `docs/roadmap.md` Phase 4 — do **not** reach for it as the fix). A VPS or an always-on desktop avoids it. Surface this to laptop users rather than silently handing them a companion that's unreachable half the day.
+
+The steps below use the **Docker path** as the concrete worked example, because it's the one deployed and end-to-end tested. Where a step is Docker-specific, the bare-`python3 -m companion` equivalent is called out.
 
 ---
 
@@ -16,10 +34,11 @@ This is the **manual single-user path** (M1). The agent-driven seamless install 
 
 Everything below assumes the user already has:
 
-- **A VPS running Docker** where Hermes (or any cron that can POST JSON) already runs. The companion deploys alongside it.
-- **One networking decision** — pick exactly one, because the iPhone refuses plain `http://` (App Transport Security; `docs/architecture.md` § Networking):
-  - **(A) Hostname pointed at the VPS** — an A/AAAA record on a domain the user controls. Companion auto-issues TLS via Caddy + Let's Encrypt. Default.
-  - **(B) Tunnel (Cloudflare Tunnel / Tailscale Funnel)** — a public hostname with valid TLS, no DNS or open ports required. Trade-off: a third party sits in front of the user's traffic.
+- **A host that can run Python 3 and stay reachable** — a VPS (with or without Docker) or a personal computer (see § *Where the companion can run* for the topology matrix and the laptop always-on caveat). Some cron or agent that can POST JSON (Hermes, a systemd timer, a plain shell script) runs there or alongside; the companion deploys next to it.
+- **One networking decision** — pick exactly one, because the iPhone refuses plain `http://` for a non-loopback host (App Transport Security; `docs/architecture.md` § Networking):
+  - **(A) Tunnel — Tailscale Funnel (default, spans all topologies)** — a public hostname with valid TLS, no domain / DNS / open ports; works on a VPS, a no-Docker VPS, and a laptop behind NAT. TLS terminates on the user's own node, so no third party sees content. This is the recommended default.
+  - **(B) Hostname pointed at the host** — an A/AAAA record on a domain the user controls. Companion auto-issues TLS via Caddy + Let's Encrypt (bundled), or the host's existing reverse proxy terminates TLS. Power-user option; needs a domain + reachable ports 80/443.
+  - **(C) Cloudflare Tunnel** — also gives a public HTTPS hostname, but TLS terminates at Cloudflare (it can see content in principle) — a weaker fit for the privacy thesis than Funnel.
 
 *Verify:* `dig <hostname>` resolves to the VPS, **or** the tunnel's `https://` URL returns *anything* in a browser (even a 404 from "no service yet" is fine — what matters is that TLS terminates).
 
@@ -40,7 +59,9 @@ xcodebuild -project Crowly.xcodeproj -scheme Crowly \
 
 Or use the `run-crowly` skill, which already wraps build + launch.
 
-*Verify:* app opens to **Demo Mode** with three canned digests of varying urgency (`docs/ux.md` § First-run).
+On **first launch** the app now runs a 4-screen in-app onboarding carousel (M2 Phase 3b, 2026-07-02) that walks the user through the same shape this runbook covers — a self-hosted companion, the agent/emitter hookup, and pairing — before handing off to the pair sheet. "Skip"/"Look around first" drops straight into Demo Mode. (The carousel's crow art is a placeholder pending real Lottie assets; see `docs/ux.md` § Onboarding.)
+
+*Verify:* first launch shows the onboarding carousel; skipping (or on a subsequent launch) the app opens to **Demo Mode** with three canned digests of varying urgency (`docs/ux.md` § Onboarding).
 
 *Common failures:* `xcodegen` not installed (`brew install xcodegen`); wrong simulator name; iOS 26 SDK missing (deployment target is iOS 26).
 
@@ -61,6 +82,17 @@ The shape:
    Secrets live here, plaintext-but-gitignored, **never in any vault or this repo** (`docs/architecture.md` § Security).
 3. `docker compose up -d` from `companion/`. Caddy auto-issues the TLS cert on first request; the companion serves `/ingest`, `/list`, `/summary`, `/state`, `/health`, `/pair`.
 
+**No-Docker equivalent** (VPS without Docker, or a personal computer): the companion is dependency-free Python 3 + sqlite3, so skip Compose entirely and run the bare process, env-var configured:
+
+```bash
+CROWLY_PAIRING_TOKEN=<the random string> \
+CROWLY_DB_PATH=/opt/data/crowly.db \
+CROWLY_PUBLIC_URL=https://<funnel-hostname> \
+python3 -m companion    # from the repo root (needs companion/ + emitter/ on PYTHONPATH)
+```
+
+For an always-on host, wrap that in a **systemd unit** (or `nohup`) so it survives reboots. TLS still comes from the front (Funnel, or Caddy/existing proxy) — the bare process itself speaks HTTP on `127.0.0.1:8787`; it never terminates TLS. `docker compose` is just this same process, containerized with Caddy bundled in front.
+
 *Verify:* `curl https://<hostname>/health` returns `ok` over valid HTTPS (no `-k`).
 
 *Common failures:*
@@ -70,11 +102,14 @@ The shape:
 
 ---
 
-## Step 3 — Pair the phone ✅ manual / 🔨 QR
+## Step 3 — Pair the phone ✅ manual + QR
 
-The companion exposes `GET /pair`, which returns `{companion_url, pairing_token}` (`docs/architecture.md` § Pairing). The verified M1 path is **manual URL+token entry**: the app's `PairCompanionView` ("Enter URL and token instead") writes both into a throwaway slot, calls `/health` and `/list` to prove the combo really is a Crowly companion with this token, and only then persists them to the **Keychain** and swaps `DigestStore` from demo to live (`App/Views/PairCompanionView.swift`, `Shared/Net/CompanionClient.swift`, `Shared/Net/KeychainStore.swift` — the client + keychain moved to `Shared/` in Phase 1 so the widget shares the same pairing token).
+The companion exposes `GET /pair`, which returns `{companion_url, pairing_token}` (`docs/architecture.md` § Pairing). Two paths, both validate-before-persist: the app's `PairCompanionView` writes the URL+token into a throwaway slot, calls `/health` and `/list` to prove the combo really is a Crowly companion with this token, and only then persists them to the **Keychain** and swaps `DigestStore` from demo to live (`App/Views/PairCompanionView.swift`, `Shared/Net/CompanionClient.swift`, `Shared/Net/KeychainStore.swift` — the client + keychain moved to `Shared/` in Phase 1 so the widget shares the same pairing token).
 
-> **Today: manual entry is wired end-to-end and validate-before-persist works.** QR scan is stubbed — the entry point in `PairCompanionView` is reserved (`showQRScanner`) but `AVFoundation` integration is M2 (`docs/roadmap.md` § M2).
+- **QR scan** (M2 Phase 3b, 2026-07-02): "Scan QR" opens `QRPairScannerView` (VisionKit `DataScannerViewController`), reads the companion's `{companion_url, pairing_token}` QR, fills the fields, and auto-validates. On a device without a camera (Simulator / headless cloud device) it shows a "Camera unavailable → Enter manually" fallback.
+- **Manual URL+token entry** — the always-works fallback, verified end-to-end from M1.
+
+> **Today: both paths are wired end-to-end and validate-before-persist works.** QR scan shipped in M2 Phase 3b (was previously a reserved stub); manual entry remains the fallback and the only path where the camera is unavailable.
 
 *Verify:* app leaves Demo Mode after pairing; the inbox auto-refreshes (on foreground; pull-to-refresh also forces it) to an **empty real inbox** ("No digests yet. Send your first one from Hermes." per `docs/ux.md`); the inline error path surfaces typed errors (unreachable / unauthorized / decode) without crashing back to demo.
 
@@ -115,7 +150,7 @@ hermes-run morning-briefing | python3 /opt/crowly/crowly_emit.py
 
 ## Step 5 — Steady state ✅ (the reading experience itself)
 
-This is what the two-week test measures (`docs/validation.md`):
+This is what the two-week test was designed to measure (`docs/validation.md`; the formal gate was **waived 2026-07-02**, but the steady-state loop below is the thing daily use exercises):
 
 - Hermes cron emits → companion stores → app/widget pulls → user reads in the app → archives.
 - Opening a digest marks it read; archive (with undo) is the only triage move (no "handled," no snooze — `CLAUDE.md` § Invariants).
@@ -123,7 +158,7 @@ This is what the two-week test measures (`docs/validation.md`):
 
 *Verify:* most days, the user opens the app **unprompted** after the seeding period; archive is the natural end-state, not a guilt pile (`docs/validation.md` § Success criteria).
 
-*Common failures (test-level, not bug-level):* no unprompted opens in two weeks → **stop at M1**, do not build the public layer (`docs/validation.md` § Kill criteria).
+*Common failures (test-level, not bug-level):* the designed kill signal was no unprompted opens in two weeks → **stop at M1**, do not build the public layer. That formal gate was **waived 2026-07-02** (M2 proceeds on daily use), so this is now the fallback trigger: if daily use lapses, run the kill criteria before widening the public layer (`docs/validation.md` § Kill criteria).
 
 ---
 
@@ -133,9 +168,9 @@ This is what the two-week test measures (`docs/validation.md`):
 |---|---|---|
 | 0. Prerequisites | 👤 | — |
 | 1. Install the app | ✅ mechanism / 🔨 distribution | TestFlight + App Store (M2) |
-| 2. Stand up the companion | ✅ built / 👤 deploy | Operator `docker compose up` on their VPS; Caddy auto-issues TLS from their hostname |
-| 3. Pair the phone | ✅ manual entry / 🔨 QR scan | QR scan (M2) |
+| 2. Stand up the companion | ✅ built / 👤 deploy | Operator runs it on their host — `docker compose up` (VPS+Docker) *or* bare `python3 -m companion` (no-Docker VPS / personal computer); TLS from Funnel (default), bundled Caddy, or an existing proxy |
+| 3. Pair the phone | ✅ manual entry + QR scan (QR shipped M2 Phase 3b) | — |
 | 4. Wire the emitter | ✅ helper against real companion / 🔨 Hermes-skill registry install | Pinned-skill install into a live Hermes deployment |
-| 5. Steady state | ✅ app + **live widget** built (widget fetches `/summary` on its own timeline, App Group fallback — Phase 1, 2026-07-02); the live loop runs once Steps 2–4 are deployed | The two-week behavioral test itself (`docs/validation.md`) |
+| 5. Steady state | ✅ app + **live widget** built (widget fetches `/summary` on its own timeline, App Group fallback — Phase 1, 2026-07-02); the live loop runs once Steps 2–4 are deployed | The two-week behavioral test — **waived 2026-07-02**; retained as fallback, not a remaining blocker (`docs/validation.md`) |
 
-The gap at a glance: **the software is built** — including the live companion-backed widget (M1 Phase 1). What remains is operator deployment (Step 2 onto the user's VPS), the Hermes-skill registry install (Step 4), and the M1 behavioral gate itself — the two-week validation test (`docs/validation.md`).
+The gap at a glance: **the software is built** — including the live companion-backed widget (M1 Phase 1). What remains is operator deployment (Step 2 onto the user's VPS) and the Hermes-skill registry install (Step 4). The M1 behavioral gate — the two-week validation test (`docs/validation.md`) — was **waived 2026-07-02** (owner decision; M2 proceeds on daily use), so it is no longer a remaining blocker; it stays on the shelf as the honest fallback if the reader stops earning its tap.

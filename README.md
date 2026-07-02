@@ -33,7 +33,7 @@ Built first for [Hermes Agent](https://github.com/NousResearch/hermes) cron/dige
 Three parts — two run, one shipped:
 
 - **iOS app** (App Store) — list, detail, **home-screen widget** (pull/timeline-refresh), demo mode, QR pairing, Keychain.
-- **Companion service** (Docker, on each user's VPS) — validates/stores digests and serves them (`GET /list`, `GET /summary`). Bundled auto-HTTPS.
+- **Companion service** (on each user's own host — a bare `python3 -m companion` process or a Docker bundle; Docker optional — on a VPS or a personal computer) — validates/stores digests and serves them (`GET /list`, `GET /summary`). Auto-HTTPS bundled; Tailscale Funnel is the cross-topology TLS default.
 - **Emitter kit** — a helper + Hermes skill that makes any agent emit schema-valid digests.
 
 See [`docs/architecture.md`](docs/architecture.md) for the full diagram and flow.
@@ -41,9 +41,9 @@ See [`docs/architecture.md`](docs/architecture.md) for the full diagram and flow
 ## Build philosophy
 
 1. **Schema first.** The digest contract is the real product and pays off in Telegram/Obsidian too. It's **versioned and additive-only**, because the app/companion/emitter deploy independently. See [`docs/schema.md`](docs/schema.md).
-2. **M1 gates M2.** Build the single-user slice (companion + app pointed at your own VPS), run the two-week pull test, and only then build the public-only layer (demo mode polish, stranger TLS/onboarding, privacy). The single-user slice is on the public release's critical path anyway. See [`docs/roadmap.md`](docs/roadmap.md).
+2. **M1 gates M2 — gate waived 2026-07-02.** Build the single-user slice (companion + app pointed at your own VPS) first; the designed gate was a two-week pull test before the public-only layer (demo mode polish, stranger TLS/onboarding, privacy). The owner **waived that gate on 2026-07-02** (proceeding on daily-use conviction rather than running the formal clock), so M2 build is underway. The single-user slice is on the public release's critical path anyway, and the two-week test is retained as an honest fallback if the reader stops earning its tap. See [`docs/roadmap.md`](docs/roadmap.md) and [`docs/validation.md`](docs/validation.md).
 3. **Native, widget-first.** The home-screen widget showing the latest digests is the reason to be native and the marketing artifact.
-4. **Personal validation gates expansion.** If Daniel doesn't reach for it unprompted within two weeks, stop at M1 — don't build the public layer or widen to generic webhooks.
+4. **Personal validation was the designed brake on expansion — gate waived 2026-07-02.** The rule was: if Daniel doesn't reach for it unprompted within two weeks, stop at M1 — don't build the public layer or widen to generic webhooks. The owner waived that gate on 2026-07-02 and M2 is proceeding on daily use; the kill criteria are kept as the honest fallback should the reader stop earning its tap.
 5. **Content stays on the user's server.** The app pulls directly from the companion over HTTPS; no central service ever sees content. Data ownership is the lead differentiator, not an afterthought.
 
 ## Docs
@@ -54,7 +54,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full diagram and flow
 - [`docs/emitter.md`](docs/emitter.md) — the `POST /ingest` wire contract and the emitter kit (helper + Hermes skill). Implementation in [`emitter/`](emitter/).
 - [`docs/ux.md`](docs/ux.md) — the M1 iOS UI/UX: inbox, digest detail, the home-screen widget.
 - [`docs/design-system.md`](docs/design-system.md) — tokens, components with SwiftUI sketches, FNV-1a job-color algo.
-- [`docs/validation.md`](docs/validation.md) — the M1 two-week personal test, success criteria, kill criteria.
+- [`docs/validation.md`](docs/validation.md) — the M1 two-week personal test, success criteria, kill criteria (the gate was **waived 2026-07-02**; retained as design history + fallback).
 - [`docs/roadmap.md`](docs/roadmap.md) — M1 (single-user) → M2 (public-ready) build order.
 - [`docs/onboarding.md`](docs/onboarding.md) — single-user install runbook (app + companion + emitter) with per-step ✅/🔨/👤 status; doubles as the team's debug checklist.
 - [`docs/deployment-learnings.md`](docs/deployment-learnings.md) — the real first VPS + iPhone deploy: the working path (Tailscale Funnel, shared Docker net, Hermes emit skill) and every snag + fix — source material for the M2 agent-driven `setup-crowly` installer.

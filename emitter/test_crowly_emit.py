@@ -66,4 +66,64 @@ except ce.EmitError as e:
     check("validate() rejects date-only created_at",
           "created_at" in str(e))
 
+# --- v2: structured content blocks --------------------------------------
+
+# A v2 digest with one of each known block type builds/validates and is v2.
+v2 = ce.build_digest({
+    "job_id": "j", "title": "T", "bottom_line": "b", "urgency": "normal",
+    "content": [
+        {"type": "heading", "text": "Overview"},
+        {"type": "paragraph", "text": "Some **bold** prose with a [link](https://x)."},
+        {"type": "list", "style": "ordered", "items": ["one", "two"]},
+        {"type": "list", "items": ["default style is fine"]},  # style omitted
+        {"type": "callout", "variant": "warning", "title": "Heads up", "text": "watch out"},
+        {"type": "callout", "text": "variant omitted -> ok"},  # variant omitted
+        {"type": "metrics", "items": [{"label": "Temp", "value": "31C"}, {"label": "AQI", "value": "42"}]},
+        {"type": "divider"},
+    ],
+})
+check("v2 content array builds OK", isinstance(v2.get("content"), list))
+check("schema_version == 2", v2["schema_version"] == 2 == ce.SCHEMA_VERSION)
+
+# An UNKNOWN block type passes validation and survives in the built digest.
+future = ce.build_digest({
+    "job_id": "j", "title": "T", "bottom_line": "b", "urgency": "low",
+    "content": [
+        {"type": "paragraph", "text": "known block"},
+        {"type": "future_widget", "payload": {"foo": [1, 2, 3]}, "extra": "kept"},
+    ],
+})
+_fut = future["content"][1]
+check("unknown block type accepted (validates)", _fut["type"] == "future_widget")
+check("unknown block survives verbatim (payload)", _fut["payload"] == {"foo": [1, 2, 3]})
+check("unknown block survives verbatim (extra field)", _fut["extra"] == "kept")
+
+# Malformed KNOWN blocks each raise EmitError.
+for bad_content, why in [
+    ([{"type": "metrics", "items": [{"label": "x"}]}], "metrics item missing value"),
+    ([{"type": "list", "items": "notalist"}], "list items not an array"),
+    ([{"type": "list", "items": ["ok", 7]}], "list item not a string"),
+    ([{"type": "paragraph"}], "paragraph missing text"),
+    ([{"type": "heading", "text": 5}], "heading text not a string"),
+    ([{"type": "callout"}], "callout missing text"),
+    ([{"type": "callout", "text": "t", "variant": "spicy"}], "callout bad variant"),
+    ([{"type": "list", "items": ["ok"], "style": "roman"}], "list bad style"),
+    ([{"type": "metrics", "items": [{"label": "x", "value": 3}]}], "metrics value not a string"),
+    (["not-an-object"], "block is not an object"),
+]:
+    try:
+        ce.build_digest({"job_id": "j", "title": "T", "bottom_line": "b",
+                         "urgency": "low", "content": bad_content})
+        check("reject content: " + why, False)
+    except ce.EmitError:
+        check("reject content: " + why, True)
+
+# content present but not a list -> EmitError.
+try:
+    ce.build_digest({"job_id": "j", "title": "T", "bottom_line": "b",
+                     "urgency": "low", "content": {"type": "paragraph", "text": "x"}})
+    check("reject content: not a list", False)
+except ce.EmitError:
+    check("reject content: not a list", True)
+
 print("\nall emitter tests passed")

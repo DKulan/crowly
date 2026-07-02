@@ -1,5 +1,15 @@
 # Validation
 
+> **Status: gate waived 2026-07-02 (owner decision).** The two-week behavioral
+> test below was the designed M1→M2 gate. Rather than run the formal clock,
+> the owner chose to proceed to M2 on the strength of daily use. This document
+> is retained as **design history and an honest fallback**: the success and
+> kill criteria still describe what "the reader earns its tap" means, so if M2
+> stalls — or the reader quietly stops getting opened — this is the check to
+> run before pouring more into the public layer. The clock was never started;
+> nothing below was measured. See `docs/roadmap.md` (M1 item 5) and `CLAUDE.md`
+> (Invariants → "M1 gates M2 — waived").
+
 The point of validation is behavioral, not technical: **does a dedicated reader change whether and how Daniel reviews scheduled agent output?** A polished app he doesn't open is a failure regardless of how nice it looks.
 
 The validation surface is **M1** — the single-user native slice (`docs/roadmap.md`), pointed at Daniel's own VPS. M1 is built first because it's on the public release's critical path anyway; running the two-week test on it means the heaviest, least-reversible public-only work (privacy, demo polish, stranger onboarding) only happens **after** the reader proves itself worth opening.

@@ -36,6 +36,13 @@ final class DeepLinkRouter {
     /// tap while already at the root still fires an `.onChange`.
     var popToInbox: Int = 0
 
+    /// Bumped when a `crowly://onboarding` URL arrives — replays the first-run
+    /// onboarding carousel (resets `hasOnboarded`). Undocumented; exists so the
+    /// flow can be re-shown for testing / "show me that again" without deleting
+    /// the app. A counter, not a Bool, so a repeat replay still fires
+    /// `.onChange`. `ContentView` owns the gate state and watches this.
+    var replayOnboarding: Int = 0
+
     /// Parse a `crowly://digest/<id>` URL. Returns the id, or `nil` if the
     /// URL isn't a digest deeplink. Defensive: ignores unknown hosts /
     /// trailing slashes so future URL shapes can be added additively.
@@ -60,6 +67,11 @@ final class DeepLinkRouter {
         url.scheme == "crowly" && url.host == "inbox"
     }
 
+    /// True iff the URL is `crowly://onboarding` (replay the first-run flow).
+    nonisolated static func isOnboardingURL(_ url: URL) -> Bool {
+        url.scheme == "crowly" && url.host == "onboarding"
+    }
+
     /// Route a URL into the right pending slot. No-op if none matches.
     func handle(_ url: URL) {
         if let id = Self.digestId(from: url) {
@@ -72,6 +84,10 @@ final class DeepLinkRouter {
         }
         if Self.isInboxURL(url) {
             popToInbox += 1
+            return
+        }
+        if Self.isOnboardingURL(url) {
+            replayOnboarding += 1
         }
     }
 }

@@ -15,13 +15,16 @@ The M1 app's interaction design. Grounded in Apple's WidgetKit / App Intents / S
 One `NavigationStack` rooted on **Inbox** is enough for M1. (A `TabView` — Inbox / Jobs / Settings — is an M2 move only if Jobs grows into a real browse experience.)
 
 ```
-RootNavigationStack
-└── InboxView (root)                 list of digests, grouped by date
-    ├── DigestDetailView             header → bottom line → summary/sections → sources
-    ├── JobView                      inbox filtered to one job_id
-    ├── SettingsView                 pairing, disconnect, demo toggle
-    │   └── PairCompanionView         .fullScreenCover camera scanner
-    └── DemoModeBanner               .safeAreaInset(.top), dismissable
+ContentView (root ZStack)            first-run onboarding gate over the inbox
+├── OnboardingView                   4-screen carousel, first run only (hasOnboarded gate)
+└── RootNavigationStack
+    └── InboxView (root)             list of digests, grouped by date
+        ├── DigestDetailView         header → bottom line → summary/sections → sources
+        ├── JobView                  inbox filtered to one job_id
+        ├── SettingsView             pairing, disconnect, demo toggle
+        │   └── PairCompanionView     QR scan (VisionKit) + manual URL/token fallback
+        │       └── QRPairScannerView .sheet DataScannerViewController
+        └── DemoModeBanner           .safeAreaInset(.top), dismissable
 
 Home screen:
 └── CrowlyWidget (small / medium / large)
@@ -116,17 +119,38 @@ WidgetKit specifics that matter:
 - `widgetAccentable()` on the app glyph, count badge, and job stripes — these go monochrome white in Accented mode while the body text tints cleanly.
 - `widgetURL` per row deeplinks `crowly://digest/<id>`. The whole widget is also wrapped in a `widgetURL` for the bottom-line surface so a tap anywhere on the small widget Just Works.
 
+**Cue polish (M2 Phase 3c, 2026-07-02).** The widget is the MVP's *only* habit cue, so the glance was tightened to read at arm's length — still read-only, no new surface:
+- Unread renders as a filled **"N new" pill** (tinted, `widgetAccentable`) in the medium/large header instead of plain grey text — a stronger "something arrived" signal. Absent when `unreadCount == 0`.
+- Each medium/large row now shows a **relative age** ("2h", "now") right-aligned next to the title (`.relative` format on the row's `createdAt`), so freshness is legible without opening the app.
+- **Push posture: still deferred** (decided 2026-07-02). No notifications, no `BGAppRefreshTask` — the widget's own ~15-min timeline remains the entire ambient-refresh model, and the "no notifications in the MVP" invariant (`validation.md`) holds. Local/central notifications stay a Phase-4 item, revisited only if daily use shows the widget glance isn't enough (`roadmap.md` Phase 4).
+
 Constraints respected:
 
 - **No buttons.** `Button(intent:)` is not used anywhere in the widget — there's no action to take. (This is a deliberate departure from the old loop-widget design.)
 - **No content beyond `title` + `bottom_line` + timestamp** — the widget is a pointer to the digest, not the digest itself.
 - **No widget login state** — never blank/error. Data path as shipped (M1 Phase 1, `docs/architecture.md` § Widget data path): when **paired**, the widget fetches `GET /summary` itself on its ~15-min timeline and caches the result to a shared App Group snapshot, falling back to that snapshot when a fetch fails (the app also writes the snapshot on refresh/read/archive to seed the first render). When **unpaired**, the widget renders **demo fixtures** — matching the app's demo-mode-when-unpaired behavior and giving App Review a populated widget to screenshot. (This supersedes an earlier draft of this line that showed an "Open Crowly to pair" prompt when unpaired; demo fixtures won because a populated widget reads better on the home screen and in App Review than an empty call-to-action.)
 
-## Onboarding (≈60 seconds)
+## Onboarding
 
-1. Launch → **Demo Mode** by default (3 canned digests of varied urgencies and shapes, fully client-side). Reachable afterward from Settings → "Show demo digests" (for App Review).
-2. Pinned `.safeAreaInset(.top)` banner "Connect your Crowly inbox →" → **PairCompanionView**.
-3. Pair: camera scanner reads the QR `{companion_url, pairing_token, …}`, validates by hitting the companion over HTTPS, stores credentials in the **Keychain**, dismisses with success. Manual "Enter URL and token instead" fallback for the QR-averse and as a Reviewer escape valve.
+### First-run carousel (M2 Phase 3b — shipped 2026-07-02)
+
+The first launch presents a swipeable **4-screen carousel** over the inbox — a `TabView(.page)` gated by `@AppStorage("hasOnboarded")` (the gate + `InboxView` live in a `ZStack` in `App/ContentView.swift`; onboarding presents on top on first run only). Copy is grounded in `docs/deployment-learnings.md` — it's honest about the self-hosted shape, with **no zero-touch promise**. Screens (`App/Views/Onboarding/OnboardingView.swift`, `OnboardingScreen`):
+
+1. **What Crowly is** — a read-only inbox for the digests your agents produce on a schedule; nothing acts on your behalf.
+2. **Runs on your own machine** — a self-hosted companion on *a server or your own computer* (copy is deliberately topology-neutral — not VPS-only), behind your own TLS; no central Crowly server ever sees your content. Tailscale Funnel is framed as the easy default *because it spans setups* — "it works whether you're on a VPS or a home machine, with no domain or certificate to wrangle."
+3. **Your agent fills it** — point your agent at the companion with the emitter kit, "a few lines of Python, **no Docker required**"; if the agent can run commands on the host it can even set the companion up for you.
+4. **Pair once, then read** — scan the QR your companion prints (or paste URL + token); the secret goes straight to the **Keychain**, never off the phone. Ends on the honest always-on caveat: "New digests appear whenever your companion is reachable, so it's happiest on a machine that stays awake" (the pull model can't wake a sleeping laptop — see `docs/architecture.md` § Refresh model / `docs/onboarding.md` § Where the companion can run).
+
+- **CTA** advances through the deck ("Next"), then on the last screen reads **"Connect my inbox"** and hands off to pairing: it flips `hasOnboarded` and sets `DeepLinkRouter.pendingPair`, which `InboxView` already observes → opens **PairCompanionView**.
+- **Skip** (any screen) and **"Look around first"** (last screen) dismiss straight into demo mode.
+- **Crow animations are a known-incomplete placeholder.** `App/Views/Onboarding/CrowAnimationView.swift` renders a SwiftUI placeholder (SF Symbol crow + `PhaseAnimator` bob/tilt, per-screen accent glyph); the real Lottie `.lottie` crow assets are **not sourced yet**. The `lottie-ios` package is wired into the app target, so adopting real art is a one-line swap inside that view (`CrowKind` maps each screen to a stable `crow-<kind>` asset name). Don't read the flow as "finished animations shipped."
+- **Testing surface:** `crowly://onboarding` replays the carousel (resets the gate via `DeepLinkRouter.replayOnboarding`) — the same undocumented-testing pattern as `crowly://pair`.
+
+### The "aha" arc (≈60 seconds)
+
+1. Launch → carousel → pair (or skip into **Demo Mode**: 3 canned digests of varied urgencies and shapes, fully client-side; reachable afterward from Settings → "Show demo digests" for App Review).
+2. Reachable afterward: pinned `.safeAreaInset(.top)` banner "Connect your Crowly inbox →" → **PairCompanionView**.
+3. Pair: **QR scan is functional** (VisionKit `DataScannerViewController`, `App/Views/Onboarding/QRPairScannerView.swift`) — it reads the companion's `{companion_url, pairing_token, …}` QR, fills the PairCompanionView fields, and auto-validates against the companion over HTTPS before persisting to the **Keychain**. Where there's no camera (Simulator / headless device) it degrades gracefully to a "Camera unavailable → Enter manually" state. **Manual URL + token entry remains the always-works fallback** (and the Reviewer escape valve). (QR was previously specced as a post-M1 stub; it shipped in M2 Phase 3b.)
 4. First real digest pulled → demo banner disappears. That transition is the "aha."
 
 (Pairing wire-protocol detail lives in [`architecture.md`](architecture.md) → Pairing.)

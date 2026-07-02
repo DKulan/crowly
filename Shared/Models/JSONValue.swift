@@ -59,3 +59,15 @@ public enum JSONValue: Codable, Hashable, Sendable {
         }
     }
 }
+
+// MARK: - Tolerant accessors
+//
+// Used by `ContentBlock`'s decode path (Schema.swift), which decodes each
+// block as a whole JSONValue first and then reads typed fields off it — so a
+// malformed block degrades to `.unknown` instead of throwing. These return
+// nil on a type mismatch rather than trapping.
+public extension JSONValue {
+    var stringValue: String? { if case .string(let s) = self { return s } else { return nil } }
+    var arrayValue: [JSONValue]? { if case .array(let a) = self { return a } else { return nil } }
+    var objectValue: [String: JSONValue]? { if case .object(let o) = self { return o } else { return nil } }
+}

@@ -42,12 +42,46 @@ CROWLY_TOKEN=<the companion's pairing token>
    | `title` | ✅ | the header, e.g. `"AI news — Monday roundup"` |
    | `bottom_line` | ✅ | one-line TL;DR for the card face + widget |
    | `urgency` | ✅ | `low`\|`normal`\|`high`\|`urgent` — drives in-app sort order + widget prominence; be honest |
-   | `summary` | optional | main prose body |
-   | `sections` | optional | `[{"heading","body"}]` structured detail |
+   | `content` | optional | **preferred (v2)** — ordered array of typed blocks (see below) for anything structured |
+   | `summary` | optional | main prose body — fine for a *simple* digest with no structure |
+   | `sections` | optional | `[{"heading","body"}]` — the v1 fallback for structured detail |
    | `sources` | optional | `[{"title","url"}]` tappable links |
 
    **Do not set** `id`, `created_at`, or `schema_version` — the helper stamps
    those (the id is a content-derived idempotency key).
+
+### Structured content: the `content` blocks (v2, preferred)
+
+`content` is an **ordered array of typed blocks** — this is how you give a
+digest real structure the app renders natively. Prefer it over one long
+`summary` paragraph whenever the digest has more than a couple of sentences.
+`summary`/`sections` are still valid for a genuinely simple digest, but reach
+for `content` for anything structured. Use `content` **or** `summary`/`sections`,
+not both (the app prefers `content` when present).
+
+Six block types:
+
+| type | shape | when to use |
+|---|---|---|
+| `paragraph` | `{"type":"paragraph","text":"…"}` | ordinary prose |
+| `heading` | `{"type":"heading","text":"…"}` | group the blocks below it |
+| `list` | `{"type":"list","style":"bullet"\|"ordered","items":["…","…"]}` | instead of a long paragraph of enumerated items; `style` optional (default bullet) |
+| `callout` | `{"type":"callout","variant":"info"\|"warning"\|"success"\|"critical","title":"…?","text":"…"}` | the single most important thing; a `warning`/`critical` variant for anything tied to `urgency` (keep the two honest and consistent) |
+| `metrics` | `{"type":"metrics","items":[{"label":"…","value":"…"}]}` | numbers — temperatures, counts, prices, deltas |
+| `divider` | `{"type":"divider"}` | a visual break between groups |
+
+**Inline text** inside any `text` field takes a restricted Markdown subset:
+`**bold**`, `*italic*`, `` `code` ``, and `[label](https://url)` links. Use
+`**bold**` to draw the eye and `[links](url)` for references inline (this is in
+addition to the tappable `sources` array).
+
+Rules of thumb:
+- Lead with a **`callout`** for the one thing he must not miss. If `urgency` is
+  `high`/`urgent`, back it with a `warning`/`critical` callout — don't bury the
+  reason in prose.
+- Put every number in a **`metrics`** block, not inside a sentence.
+- Turn "three things happened…" prose into a **`list`**.
+- Use **`heading`** + `divider` to group when a digest covers multiple topics.
 
 2. **Pipe it to the helper** (the env vars are already in the environment):
 
@@ -72,11 +106,39 @@ CROWLY_TOKEN=<the companion's pairing token>
 content='{
   "job_id": "harmony-weekly",
   "title": "Harmony Community — weekly digest",
-  "urgency": "low",
-  "bottom_line": "Quiet week. Two bylaw drafts in public comment; Rec Society AGM Aug 12.",
-  "summary": "...",
-  "sections": [{"heading": "Bylaw watch", "body": "..."}],
+  "urgency": "high",
+  "bottom_line": "Boil-water advisory in effect until Fri; two bylaw drafts in public comment; Rec Society AGM Aug 12.",
+  "content": [
+    {"type": "callout", "variant": "warning", "title": "Boil-water advisory",
+     "text": "In effect for the **north zone** until Fri Aug 8. Boil all drinking water 1 min. [Details](https://www.rockyview.ca/advisory)."},
+    {"type": "metrics", "items": [
+      {"label": "Bylaw drafts open", "value": "2"},
+      {"label": "Comment closes", "value": "Aug 20"},
+      {"label": "Reservoir level", "value": "-12%"}
+    ]},
+    {"type": "heading", "text": "Bylaw watch"},
+    {"type": "paragraph", "text": "Two drafts are in public comment. Both touch *short-term rentals*; the second also revises setback rules."},
+    {"type": "list", "style": "bullet", "items": [
+      "Draft 14-2026 — STR licensing caps",
+      "Draft 15-2026 — rear-lot setback minimums"
+    ]},
+    {"type": "divider"},
+    {"type": "paragraph", "text": "**Rec Society AGM** is Aug 12, 7pm at the community hall."}
+  ],
   "sources": [{"title": "Rocky View County", "url": "https://www.rockyview.ca/..."}]
+}'
+echo "$content" | python3 scripts/crowly_emit.py
+```
+
+A *simple* digest can still use plain prose instead of `content`:
+
+```bash
+content='{
+  "job_id": "harmony-weekly",
+  "title": "Harmony Community — weekly digest",
+  "urgency": "low",
+  "bottom_line": "Quiet week.",
+  "summary": "Nothing notable this week. Next council meeting Aug 19."
 }'
 echo "$content" | python3 scripts/crowly_emit.py
 ```

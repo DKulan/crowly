@@ -9,6 +9,16 @@ options:
   createIntermediateGroups: true
   groupSortPosition: top
 
+# SwiftPM dependencies. `lottie-ios` backs the M2 onboarding crow animations
+# (App/Views/Onboarding/). The animation views currently render a SwiftUI
+# placeholder (CrowAnimationView) until the real `.lottie` crow assets are
+# sourced; the package is wired now so adopting them is a one-line swap in that
+# view. App target only — the widget and tests don't use it.
+packages:
+  Lottie:
+    url: https://github.com/airbnb/lottie-ios
+    from: "4.5.0"
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -62,6 +72,10 @@ targets:
           - CFBundleTypeRole: Editor
             CFBundleURLName: com.crowly.Crowly
             CFBundleURLSchemes: [crowly]
+        # QR pairing (M2 onboarding) uses VisionKit's DataScannerViewController,
+        # which needs camera access. Copy is user-facing in the permission
+        # prompt. The manual URL+token path works without granting this.
+        NSCameraUsageDescription: "Crowly uses the camera to scan the pairing QR code your companion prints."
     # Phase 1 (live widget): the app and the widget extension must share the
     # pairing token (Keychain) and a read-state snapshot (App Group).
     #   - keychain-access-groups: the FIRST entry is the default access group
@@ -87,6 +101,8 @@ targets:
           - group.com.crowly
     dependencies:
       - target: CrowlyWidgetExtension
+      # Onboarding crow animations (see packages.Lottie note). App target only.
+      - package: Lottie
 
   CrowlyWidgetExtension:
     type: app-extension

@@ -78,6 +78,12 @@ public struct Digest: Codable, Hashable, Identifiable, Sendable {
     public let sections: [DigestSection]
     public let sources: [Source]
 
+    /// v2 structured content (`docs/schema.md` § v2). Optional, additive-only:
+    /// when non-empty the detail view renders these typed blocks; when empty it
+    /// falls back to `summary` + `sections`. Decoded tolerantly — a malformed
+    /// block degrades to `.unknown` rather than failing the digest decode.
+    public let content: [ContentBlock]
+
     /// Unknown future fields preserved verbatim per the additive-only rule.
     /// Cheap insurance: a newer field a v2 emitter adds survives a round-trip
     /// through this v1 reader.
@@ -94,6 +100,7 @@ public struct Digest: Codable, Hashable, Identifiable, Sendable {
         bottomLine: String,
         summary: String? = nil,
         sections: [DigestSection] = [],
+        content: [ContentBlock] = [],
         sources: [Source] = [],
         extras: [String: JSONValue] = [:]
     ) {
@@ -108,12 +115,13 @@ public struct Digest: Codable, Hashable, Identifiable, Sendable {
         self.summary = summary
         self.sections = sections
         self.sources = sources
+        self.content = content
         self.extras = extras
     }
 
     private static let knownKeys: Set<String> = [
         "schema_version", "id", "job_id", "source", "title", "created_at",
-        "urgency", "bottom_line", "summary", "sections", "sources"
+        "urgency", "bottom_line", "summary", "sections", "sources", "content"
     ]
 
     public init(from decoder: Decoder) throws {
@@ -139,6 +147,17 @@ public struct Digest: Codable, Hashable, Identifiable, Sendable {
         self.summary = try container.decodeIfPresent(String.self, forKey: DynamicKey("summary"))
         self.sections = try container.decodeIfPresent([DigestSection].self, forKey: DynamicKey("sections")) ?? []
         self.sources = try container.decodeIfPresent([Source].self, forKey: DynamicKey("sources")) ?? []
+
+        // v2 `content`: decode the array as raw JSONValues, then map each
+        // element through ContentBlock.parse (which cannot throw). A malformed
+        // block degrades to `.unknown` rather than failing the whole digest —
+        // the "degrade-and-warn, never crash" rule. `try?` swallows a type
+        // mismatch (e.g. a rogue companion sending `content` as a string), so
+        // a wrong-typed `content` degrades to [] instead of throwing the whole
+        // digest decode; an absent `content` is [] too.
+        let rawContent = (try? container.decodeIfPresent([JSONValue].self, forKey: DynamicKey("content"))) ?? nil
+        self.content = (rawContent ?? []).map(ContentBlock.parse)
+
         self.extras = try Self.decodeExtras(from: container, known: Self.knownKeys)
     }
 
@@ -158,6 +177,11 @@ public struct Digest: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(summary, forKey: DynamicKey("summary"))
         if !sections.isEmpty { try container.encode(sections, forKey: DynamicKey("sections")) }
         if !sources.isEmpty { try container.encode(sources, forKey: DynamicKey("sources")) }
+        // Re-emit v2 content verbatim (known blocks from their fields, unknown
+        // blocks from their preserved raw JSON) so a decoded digest round-trips.
+        if !content.isEmpty {
+            try container.encode(content.map(\.jsonValue), forKey: DynamicKey("content"))
+        }
         try Self.encodeExtras(extras, into: &container)
     }
 

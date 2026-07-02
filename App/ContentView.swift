@@ -1,6 +1,6 @@
-// ContentView — the app's root view. Hosts InboxView and injects the
-// DigestStore. In M1 demo mode the store is seeded with `DemoFixtures` so
-// the inbox renders without any companion connection.
+// ContentView — the app's root view. Hosts the first-run onboarding gate and
+// InboxView, and injects the DigestStore. In M1 demo mode the store is seeded
+// with `DemoFixtures` so the inbox renders without any companion connection.
 
 import SwiftUI
 
@@ -9,6 +9,13 @@ struct ContentView: View {
     /// hasn't paired yet, `DigestStore` falls back to demo fixtures
     /// automatically.
     @State private var store = DigestStore(credentials: KeychainStore())
+
+    /// First-run gate. False until the user completes (or skips) onboarding;
+    /// persisted so the carousel shows exactly once. A `crowly://onboarding`
+    /// deeplink resets it for testing (see the router / CrowlyApp handler).
+    @AppStorage("hasOnboarded") private var hasOnboarded = false
+
+    @Environment(DeepLinkRouter.self) private var router
 
     /// How often to re-pull `/list` while the app is foregrounded. The
     /// companion is a personal VPS serving one reader, so a gentle poll is
@@ -19,6 +26,31 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
+        ZStack {
+            inbox
+            if !hasOnboarded {
+                OnboardingView { startPairing in
+                    withAnimation(.snappy) { hasOnboarded = true }
+                    // Hand off to the pairing sheet InboxView already owns,
+                    // via the router slot it observes. Deferred a beat so the
+                    // sheet presents after the onboarding cover transitions out.
+                    if startPairing {
+                        router.pendingPair = true
+                    }
+                }
+                .transition(.opacity)
+                .zIndex(1)
+            }
+        }
+        // A `crowly://onboarding` deeplink flips this back on to replay the
+        // flow (testing / "show me that again"). Handled here because the gate
+        // state lives in this view.
+        .onChange(of: router.replayOnboarding) { _, _ in
+            withAnimation(.snappy) { hasOnboarded = false }
+        }
+    }
+
+    private var inbox: some View {
         InboxView()
             .environment(store)
             // Auto-refresh replaces pull-to-refresh: refresh whenever the

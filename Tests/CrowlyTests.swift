@@ -335,6 +335,26 @@ import Foundation
     #expect(!DeepLinkRouter.isInboxURL(URL(string: "https://inbox")!))
 }
 
+@Test func deepLinkRouterRecognizesOnboardingURL() {
+    #expect(DeepLinkRouter.isOnboardingURL(URL(string: "crowly://onboarding")!))
+    #expect(!DeepLinkRouter.isOnboardingURL(URL(string: "crowly://inbox")!))
+    #expect(!DeepLinkRouter.isOnboardingURL(URL(string: "https://onboarding")!))
+}
+
+@Test @MainActor func deepLinkRouterOnboardingURLBumpsReplayCounter() {
+    // `crowly://onboarding` replays the first-run flow. Counter (not Bool) so a
+    // repeat replay still fires the ContentView `.onChange`.
+    let router = DeepLinkRouter()
+    #expect(router.replayOnboarding == 0)
+    router.handle(URL(string: "crowly://onboarding")!)
+    #expect(router.replayOnboarding == 1)
+    router.handle(URL(string: "crowly://onboarding")!)
+    #expect(router.replayOnboarding == 2)
+    // A non-onboarding URL doesn't touch it.
+    router.handle(URL(string: "crowly://digest/dgst_x")!)
+    #expect(router.replayOnboarding == 2)
+}
+
 @Test @MainActor func deepLinkRouterInboxURLBumpsPopCounter() {
     // The large widget's "View all →" footer deeplinks crowly://inbox. The
     // counter increments (not a Bool flip) so a repeat tap still fires.
