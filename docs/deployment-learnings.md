@@ -109,6 +109,31 @@ because the app defaulted to universal.
 - **Not a per-user step** — this is app-distribution, handled once by us. Noted
   so the App-Store-submission checklist (M2 §10) doesn't re-trip it.
 
+### 6b. TestFlight upload path — App Store Connect API key, not the Xcode GUI
+Uploads are CLI-driven (scriptable, no Organizer). Each upload:
+1. Bump `CURRENT_PROJECT_VERSION` in `project.yml` (`MARKETING_VERSION` stays), `xcodegen generate`.
+2. `xcodebuild … -destination 'generic/platform=iOS' -archivePath build/Crowly.xcarchive -allowProvisioningUpdates archive`
+   (the App Group + keychain-access-group entitlements auto-register on archive).
+3. `xcodebuild -exportArchive -archivePath build/Crowly.xcarchive -exportOptionsPlist build/ExportOptions.plist -allowProvisioningUpdates -authenticationKeyPath <p8> -authenticationKeyID <id> -authenticationKeyIssuerID <issuer>`
+   (`ExportOptions.plist`: method `app-store-connect`, destination `upload`, signingStyle `automatic`).
+- The ASC API key `.p8` is **downloaded-once and lives outside the repo** (never committed; `.gitignore` already covers `*.key`/`.env`, but the `.p8` must not land in the tree either). Key ID + Issuer ID are account-level.
+- Post-upload is manual in the ASC web UI: add the build to the internal tester group (no App Review needed for internal testing); answer the one-time export-compliance prompt (HTTPS-only → exempt).
+
+### 6c. Companion redeploy — the VPS is now a git checkout (was scp)
+`/docker/crowly` on the VPS is a **git checkout of the monorepo** (converted from
+the earlier scp copy). Redeploy is:
+```
+cd /docker/crowly && git pull origin main
+cd /docker/crowly/companion && docker compose -f docker-compose.local.yml up -d --build
+```
+Three traps this fixes vs. the old scp flow: (1) compose files live under
+`companion/` (build `context: ..` needs the repo root with both `companion/` +
+`emitter/`); (2) the code is `COPY`'d into the image, so `--build` is required —
+a plain `restart` reruns stale code; (3) you MUST pass
+`-f docker-compose.local.yml` (the Tailscale-Funnel variant) — a bare
+`docker compose` picks the Caddy `docker-compose.yml` and dies on the unset
+`CROWLY_DOMAIN`. `.env` is gitignored, so pulls never touch the pairing token.
+
 ## What the `setup-crowly` skill must do (derived requirements)
 
 Given host Docker access, an agent *can* automate most of the deploy:
