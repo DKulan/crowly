@@ -30,13 +30,13 @@ import Foundation
     #expect(corpus.contains("pair"))
 }
 
-@Test func crowKindsMapToStableLottieNames() {
-    // The Lottie asset name is the swap contract; keep it derived from the raw
-    // value so a rename can't silently break the future asset lookup.
-    #expect(CrowKind.welcome.lottieName == "crow-welcome")
-    #expect(CrowKind.pair.lottieName == "crow-pair")
+@Test func crowKindsMapToStableImageNames() {
+    // The crow image asset name is the art-swap contract; keep it derived from
+    // the raw value so a rename can't silently break the asset lookup.
+    #expect(CrowKind.welcome.imageName == "crow-welcome")
+    #expect(CrowKind.pair.imageName == "crow-pair")
     for kind in CrowKind.allCases {
-        #expect(kind.lottieName == "crow-\(kind.rawValue)")
+        #expect(kind.imageName == "crow-\(kind.rawValue)")
         #expect(!kind.placeholderSymbol.isEmpty)
         #expect(!kind.accentSymbol.isEmpty)
     }
