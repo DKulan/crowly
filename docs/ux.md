@@ -60,9 +60,10 @@ Sectioned `List`, sticky **date** headers (Today / Yesterday / This week / Earli
 - **Swipe actions:** trailing "Archive" (gray) is the only swipe. Archive fires a `state_change`, removes the row optimistically, and shows an undo toast for ~5 seconds. **There is no leading swipe.** (No "mark handled," no "mute job" — those were artifacts of the old loop model.)
 - **Tap a row** marks it read (optimistically + `state_change`) and pushes the detail view. The unread dot fades immediately; if the network write fails, the dot stays and a quiet retry banner appears at the top.
 
-**Empty / error states** use `ContentUnavailableView`, never a blank screen:
-- New pairing → "No digests yet. Send your first one from Hermes." + "Show example" (Demo Mode).
-- Companion unreachable → "Can't reach your inbox service" + retry, with last-cached digests still visible behind the banner.
+**Loading / empty / error states** — the inbox has four states, never a blank screen:
+- **Loading (first fetch)** → a redacted, cell-shaped skeleton (`InboxLoadingView`, `.redacted(reason: .placeholder)`), NOT an empty view. In live mode the store starts `hasLoaded == false` and the paired inbox is empty until the first `/list` lands; showing the skeleton (rather than an empty state) is what stops the cold-launch "flash empty, then pop in" and the wrong "No matches" copy mid-load. Demo mode is seeded synchronously (`hasLoaded == true`), so it never shows the skeleton.
+- **Genuinely empty**, three distinct messages (never the wrong one): searching with no hits → `ContentUnavailableView.search`; paired but the companion returned nothing → "Inbox is empty" / "New digests from your companion will show up here."; demo/first-run → "No digests yet."
+- Companion unreachable → surfaced via the refresh-error path (last-cached digests stay visible; a retry banner, not a blank screen).
 - Companion schema older than `N-1` → pinned "Update your inbox service" banner, no destructive action.
 
 ## Digest detail screen

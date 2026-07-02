@@ -51,6 +51,16 @@ final class DigestStore {
     /// error path. Cleared on the next successful refresh.
     private(set) var lastRefreshError: CompanionError?
 
+    /// Whether the store has completed its first data load. Demo mode is
+    /// seeded synchronously in `init`, so it's `true` immediately; live mode
+    /// starts `false` (the inbox is empty pending the first `/list` fetch) and
+    /// flips `true` once that fetch finishes — success OR failure. The inbox
+    /// reads this to show a loading skeleton instead of the "empty" state
+    /// during the initial fetch, so a cold launch doesn't flash empty and then
+    /// populate. Once `true`, it stays `true` (a later refresh isn't a "first
+    /// load"; pull-to-refresh has its own spinner).
+    private(set) var hasLoaded: Bool
+
     /// Guards against overlapping refreshes. The foreground poll and a
     /// manual pull-to-refresh can both call `refresh()`; without this they
     /// could fire two concurrent `/list` calls and let a stale snapshot
@@ -91,12 +101,19 @@ final class DigestStore {
         if paired {
             // Live mode: start empty so the inbox doesn't briefly show demo
             // fixtures over a real account. The view triggers a refresh.
+            // `hasLoaded` is false until that first fetch lands, so the inbox
+            // shows a loading skeleton rather than the empty state.
             self.digests = seedDigests ?? []
             self.client = CompanionClient(credentials: credentials)
+            // A caller that injects seed digests (tests/previews) is handing us
+            // data synchronously, so treat that as already loaded.
+            self.hasLoaded = seedDigests != nil
         } else {
             // Demo mode: seed from fixtures, identical to prior behaviour.
+            // Seeded synchronously → already loaded, no skeleton.
             self.digests = seedDigests ?? DemoFixtures.digests
             self.client = nil
+            self.hasLoaded = true
             for d in self.digests {
                 self.digestStates[d.id] = .unread
             }
@@ -252,7 +269,13 @@ final class DigestStore {
         // will deliver the freshest snapshot.
         guard !isRefreshing else { return }
         isRefreshing = true
-        defer { isRefreshing = false }
+        defer {
+            isRefreshing = false
+            // The first fetch has now resolved (success or failure) — leave
+            // the loading state so the inbox stops showing the skeleton and
+            // shows either content or the appropriate empty/error view.
+            hasLoaded = true
+        }
         do {
             let envelopes = try await client.list()
             apply(envelopes: envelopes)
@@ -318,6 +341,9 @@ final class DigestStore {
         self.digests = []
         self.digestStates = [:]
         self.lastArchivedId = nil
+        // Back to a first-load state: show the skeleton, not "empty", while the
+        // initial post-pair fetch is in flight. `refresh()` flips it back true.
+        self.hasLoaded = false
         await refresh()
     }
 
@@ -334,6 +360,9 @@ final class DigestStore {
         }
         self.lastArchivedId = nil
         self.lastRefreshError = nil
+        // Demo fixtures are seeded synchronously here, so we're "loaded" — no
+        // skeleton on the demo inbox.
+        self.hasLoaded = true
         // Drop the shared snapshot so the widget can't keep showing the
         // previous companion's digests, and nudge it back to its demo path.
         WidgetSnapshotStore.clear()

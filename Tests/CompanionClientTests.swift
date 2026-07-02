@@ -233,6 +233,49 @@ import Foundation
     #expect(store.digests.isEmpty)
 }
 
+// MARK: - hasLoaded (first-load skeleton gate)
+
+@Test @MainActor func demoModeIsLoadedImmediately() {
+    // Demo fixtures are seeded synchronously → no loading skeleton, ever.
+    let store = DigestStore(credentials: InMemoryCredentialStore())
+    #expect(store.isInDemoMode)
+    #expect(store.hasLoaded)
+}
+
+@Test @MainActor func liveModeStartsNotLoadedUntilFirstRefresh() throws {
+    // Paired with no seed: the inbox is empty AND not-yet-loaded, so the view
+    // shows the skeleton rather than the empty state on cold launch.
+    let creds = InMemoryCredentialStore()
+    try creds.set(.companionURL, value: "https://x.com")
+    try creds.set(.pairingToken, value: "secret")
+    let store = DigestStore(credentials: creds)
+    #expect(!store.hasLoaded)
+    #expect(store.digests.isEmpty)
+}
+
+@Test @MainActor func seededLiveStoreIsConsideredLoaded() throws {
+    // Injected seed digests (tests/previews) arrive synchronously → loaded.
+    let creds = InMemoryCredentialStore()
+    try creds.set(.companionURL, value: "https://x.com")
+    try creds.set(.pairingToken, value: "secret")
+    let seed = [DemoFixtures.aiNewsDigest]
+    let store = DigestStore(credentials: creds, seedDigests: seed)
+    #expect(store.hasLoaded)
+    #expect(store.digests.count == 1)
+}
+
+@Test @MainActor func didDisconnectMarksLoaded() throws {
+    // Disconnecting seeds demo fixtures synchronously → loaded (no skeleton).
+    let creds = InMemoryCredentialStore()
+    try creds.set(.companionURL, value: "https://x.com")
+    try creds.set(.pairingToken, value: "secret")
+    let store = DigestStore(credentials: creds)
+    #expect(!store.hasLoaded)   // live, pre-refresh
+    store.didDisconnect()
+    #expect(store.hasLoaded)    // demo fixtures seeded synchronously
+    #expect(store.isInDemoMode)
+}
+
 @Test @MainActor func didDisconnectClearsCredentialsAndRestoresDemo() throws {
     let creds = InMemoryCredentialStore()
     try creds.set(.companionURL, value: "https://x.com")
