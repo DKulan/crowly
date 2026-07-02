@@ -8,13 +8,22 @@ sqlite3, deliberately — easier for a future Hermes agent to install
 unattended and for a user to audit.
 
 Endpoints:
-  GET  /              pairing payload (companion_url + pairing_token)
-                      so a freshly-deployed companion has a single URL the
-                      operator can open in a browser to copy/scan into the
-                      app. The iOS app reads the same payload after QR scan;
-                      this endpoint is the QR fallback for manual entry.
-  GET  /pair          same payload, named explicitly.
-  GET  /health        liveness probe, also reports stored count.
+  GET  /              pairing payload (companion_url + pairing_token).
+                      Gated behind CROWLY_PAIR_ENABLED (default OFF): when
+                      disabled the route returns 404 so the endpoint doesn't
+                      even advertise its existence. The operator flips the
+                      env var on for the brief initial pairing window and
+                      back off afterwards — the companion's Tailscale Funnel
+                      hostname is discoverable via Certificate Transparency,
+                      so a permanently-open /pair leaks the bearer token to
+                      anyone who finds the URL. The startup banner still
+                      prints the token to the operator's stdout regardless.
+  GET  /pair          same payload, named explicitly. Same gate as above.
+  GET  /health        liveness probe. Unauthed. Reports `status` and
+                      `schema_versions_supported`. Only reports the `stored`
+                      count when CROWLY_PAIR_ENABLED is on — otherwise
+                      omitted so /health doesn't leak digest counts to
+                      unauthenticated callers.
   POST /ingest        bearer-auth; the emitter's only endpoint. Validates,
                       upserts on `id`, preserves unknown fields verbatim.
   GET  /list          bearer-auth; all digests, newest-first.
@@ -101,6 +110,7 @@ class Config:
         host: str,
         port: int,
         public_url: str,
+        pair_enabled: bool,
     ):
         self.pairing_token = pairing_token
         self.db_path = db_path
@@ -111,6 +121,12 @@ class Config:
         # http://host:port. The pairing payload prints this so the operator
         # doesn't have to guess.
         self.public_url = public_url.rstrip("/")
+        # pair_enabled gates the network-reachable /pair (and /) endpoints.
+        # Default OFF: the companion's public hostname is discoverable via
+        # Certificate Transparency logs, and a permanently-open /pair leaks
+        # the bearer token to anyone who finds the URL. Operator flips this
+        # on for the initial pairing window, then off again.
+        self.pair_enabled = pair_enabled
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -120,6 +136,12 @@ class Config:
             host=_env("CROWLY_HOST", "0.0.0.0"),
             port=int(_env("CROWLY_PORT", "8787")),
             public_url=_env("CROWLY_PUBLIC_URL", ""),  # filled in below if empty
+            # Default OFF. Treat "1"/"true"/"yes" (case-insensitive) as on;
+            # anything else — including unset — is off. Keeping the accepted
+            # truthy set narrow avoids a `CROWLY_PAIR_ENABLED=false` reading
+            # as truthy just because the string is non-empty.
+            pair_enabled=_env("CROWLY_PAIR_ENABLED", "").strip().lower()
+                in ("1", "true", "yes"),
         )
 
 
@@ -220,10 +242,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _pairing_payload(self) -> dict:
         """The shape the app expects from QR pairing (architecture.md
-        § Pairing): `{companion_url, pairing_token}`. We serve it here so the
-        operator has a single URL to open after `docker compose up` — they
-        can copy the JSON or scan a QR generated client-side (rendering an
-        actual QR image stays out of M1; that's a noted follow-up)."""
+        § Pairing): `{companion_url, pairing_token}`. This payload contains
+        the bearer token in cleartext, so the HTTP surface for it is gated
+        by CROWLY_PAIR_ENABLED (see do_GET). Only callers that already
+        passed that env gate reach this helper."""
         return {
             "companion_url": self.config.public_url,
             "pairing_token": self.config.pairing_token,
@@ -235,20 +257,30 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
 
         if path in ("/", "/pair"):
-            # Pairing payload is intentionally unauthenticated — the *whole
-            # point* of the endpoint is to be reachable before the app has a
-            # token. In production this URL is only ever hit by the operator
-            # right after deploy; Caddy + the user's firewall scope who can
-            # reach it. M2 may swap this for a single-use pairing flow.
+            # /pair returns the bearer token in cleartext, so it's gated by
+            # CROWLY_PAIR_ENABLED (default OFF). The operator flips the env
+            # var on for the brief initial pairing window and back off
+            # afterwards — the Tailscale Funnel hostname is discoverable via
+            # Certificate Transparency logs, so a permanently-open /pair
+            # leaks full read + ingest access. When disabled we return 404
+            # (not 403) so we don't advertise the endpoint's existence.
+            if not self.config.pair_enabled:
+                self._send_json(404, {"error": f"not found: {path}"})
+                return
             self._send_json(200, self._pairing_payload())
             return
 
         if path == "/health":
-            self._send_json(200, {
+            # Liveness probe. Unauthed by design. `stored` is only reported
+            # when pairing is enabled — otherwise it leaks the digest count
+            # to any unauthenticated caller who finds the URL.
+            payload: dict = {
                 "status": "ok",
-                "stored": self.store.count(),
                 "schema_versions_supported": list(SCHEMA_VERSIONS_SUPPORTED),
-            })
+            }
+            if self.config.pair_enabled:
+                payload["stored"] = self.store.count()
+            self._send_json(200, payload)
             return
 
         # Everything below requires auth.
@@ -381,10 +413,12 @@ def _now_iso() -> str:
 # --------------------------------------------------------------------------
 
 def _print_pairing_banner(config: Config) -> None:
-    """Print the pairing payload at startup. The operator copies this into
-    the app's manual-pairing UI (or scans a QR they generate client-side
-    from the JSON). Rendering an actual QR image is a noted follow-up —
-    keeping the package dependency-free is the higher priority for M1."""
+    """Print the pairing payload at startup. The operator's stdout is a
+    local channel (not network-reachable), so we always print here — the
+    operator needs the token to pair the app. What DOES change with
+    CROWLY_PAIR_ENABLED is the network-reachable HTTP /pair endpoint;
+    the banner calls that state out explicitly so the operator knows
+    whether they need to flip the env var on for pairing."""
     payload = {
         "companion_url": config.public_url,
         "pairing_token": config.pairing_token,
@@ -395,7 +429,25 @@ def _print_pairing_banner(config: Config) -> None:
     print(bar, flush=True)
     print(json.dumps(payload, indent=2), flush=True)
     print(bar, flush=True)
-    print(f"Also served at: {config.public_url}/pair", flush=True)
+    if config.pair_enabled:
+        print(
+            f"HTTP /pair endpoint: EXPOSED (CROWLY_PAIR_ENABLED=on) — "
+            f"also served at: {config.public_url}/pair",
+            flush=True,
+        )
+        print(
+            "  Flip CROWLY_PAIR_ENABLED off once the app is paired; the "
+            "token is discoverable to anyone who finds this URL.",
+            flush=True,
+        )
+    else:
+        print(
+            "HTTP /pair endpoint: GATED-OFF (CROWLY_PAIR_ENABLED unset). "
+            "Requests to / and /pair return 404 over the network. To "
+            "pair the app, set CROWLY_PAIR_ENABLED=1 and restart, then "
+            "flip it back off after pairing.",
+            flush=True,
+        )
     print(bar, flush=True)
 
 

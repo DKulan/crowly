@@ -68,9 +68,16 @@ def _wait_ready(port: int, timeout: float = 5.0) -> None:
     raise RuntimeError(f"companion did not become ready on :{port} — {last_err}")
 
 
-def _spawn_companion(port: int, db_path: str) -> subprocess.Popen:
+def _spawn_companion(
+    port: int, db_path: str, *, pair_enabled: bool = True
+) -> subprocess.Popen:
     """Boot a real companion as a subprocess. PYTHONPATH includes the repo
-    root so `import companion.store` and `import crowly_emit` both resolve."""
+    root so `import companion.store` and `import crowly_emit` both resolve.
+
+    `pair_enabled` toggles CROWLY_PAIR_ENABLED. Defaults to True because
+    most of the test flow exercises the pairing payload; the gate-off case
+    has its own dedicated section that boots with pair_enabled=False.
+    """
     env = os.environ.copy()
     env["PYTHONPATH"] = REPO_ROOT + os.pathsep + os.path.join(REPO_ROOT, "emitter")
     env["CROWLY_PAIRING_TOKEN"] = TOKEN
@@ -78,6 +85,10 @@ def _spawn_companion(port: int, db_path: str) -> subprocess.Popen:
     env["CROWLY_HOST"] = "127.0.0.1"
     env["CROWLY_PORT"] = str(port)
     env["CROWLY_PUBLIC_URL"] = f"http://127.0.0.1:{port}"
+    if pair_enabled:
+        env["CROWLY_PAIR_ENABLED"] = "1"
+    else:
+        env.pop("CROWLY_PAIR_ENABLED", None)
     proc = subprocess.Popen(
         [sys.executable, "-m", "companion"],
         cwd=REPO_ROOT,
@@ -152,13 +163,26 @@ def main() -> int:
         _wait_ready(port)
 
         # ---- 1. Unauthed liveness + pairing -----------------------------
-        print("[1] Liveness + pairing payload")
+        # The main test flow boots with CROWLY_PAIR_ENABLED=1 (the pairing
+        # window). Section [13] covers the default-off/gated case.
+        print("[1] Liveness + pairing payload (CROWLY_PAIR_ENABLED=1)")
         status, body = _request("GET", f"{url}/health", token=None, expect=200)
         _check("/health 200", body.get("status") == "ok", detail=str(body))
+        _check(
+            "/health includes `stored` when pairing enabled",
+            "stored" in body and isinstance(body["stored"], int),
+            detail=str(body),
+        )
 
         status, body = _request("GET", f"{url}/pair", token=None, expect=200)
         _check(
             "/pair returns {companion_url, pairing_token}",
+            body == {"companion_url": url, "pairing_token": TOKEN},
+            detail=str(body),
+        )
+        status, body = _request("GET", f"{url}/", token=None, expect=200)
+        _check(
+            "/ returns the same pairing payload",
             body == {"companion_url": url, "pairing_token": TOKEN},
             detail=str(body),
         )
@@ -462,6 +486,55 @@ def main() -> int:
         ]
         _check("every /list entry uses the wrapper shape after restart",
                misshaped == [], detail=f"misshaped entries: {misshaped}")
+
+        # ---- 13. P0: /pair gate closed by default ----------------------
+        # This is the credential-leak fix. Boot a fresh companion with
+        # CROWLY_PAIR_ENABLED unset and confirm:
+        #   * GET /pair returns 404 (not 200, not 403 — 404 so the
+        #     endpoint doesn't advertise its existence)
+        #   * GET / does the same
+        #   * GET /health OMITS `stored` (still returns status + versions)
+        #   * All the bearer-authed routes still work with the token
+        print("[13] P0: /pair gate closed by default (CROWLY_PAIR_ENABLED unset)")
+        proc.terminate()
+        proc.wait(timeout=5)
+        proc = None
+
+        gated_port = _free_port()
+        gated_url = f"http://127.0.0.1:{gated_port}"
+        proc = _spawn_companion(gated_port, db_path, pair_enabled=False)
+        _wait_ready(gated_port)
+
+        status, body = _request("GET", f"{gated_url}/pair", token=None, expect=404)
+        _check("gated /pair → 404", "not found" in str(body.get("error", "")).lower(),
+               detail=str(body))
+        status, body = _request("GET", f"{gated_url}/", token=None, expect=404)
+        _check("gated / → 404", "not found" in str(body.get("error", "")).lower(),
+               detail=str(body))
+
+        status, body = _request("GET", f"{gated_url}/health", token=None, expect=200)
+        _check("gated /health still 200", body.get("status") == "ok", detail=str(body))
+        _check("gated /health omits `stored`", "stored" not in body, detail=str(body))
+        _check(
+            "gated /health still reports schema_versions_supported",
+            isinstance(body.get("schema_versions_supported"), list)
+                and body["schema_versions_supported"],
+            detail=str(body),
+        )
+
+        # Bearer-authed routes are unaffected by the pair gate — the app,
+        # once paired, keeps working after the operator flips the gate off.
+        status, body = _request("GET", f"{gated_url}/list", expect=200)
+        _check("gated companion still serves /list to the bearer",
+               "digests" in body, detail=str(body)[:200])
+        status, body = _request("GET", f"{gated_url}/summary", expect=200)
+        _check("gated companion still serves /summary to the bearer",
+               "unread_count" in body, detail=str(body)[:200])
+
+        # And an unauthed /list is still 401 (not 404) — the gate must
+        # not mask real auth failures on other routes.
+        _request("GET", f"{gated_url}/list", token=None, expect=401)
+        _check("gated /list without token still 401 (not 404)", True)
 
         print("\nALL PASSED\n")
         return 0

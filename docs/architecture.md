@@ -29,7 +29,7 @@
 ### 2. Companion service (per user, on their VPS)
 The data-owning core. Self-hosted, typically a Docker bundle alongside Hermes.
 - **Ingest:** receives digests, **validates and rejects malformed ones with a clear 4xx** (so the cron author sees what's wrong in their logs), stores idempotent on `digest.id`. A bad payload never crashes the store or reaches the app. **Unknown fields are preserved verbatim** in the stored blob (`docs/schema.md` § Versioning).
-- **Serve:** `GET /list` (full cards, paginated) and `GET /summary` (cheap, latest few + unread count — for the widget).
+- **Serve:** `GET /list` (full cards; pagination is *planned, not shipped* — M1 returns everything) and `GET /summary` (cheap, latest few + unread count — for the widget).
 - **Store:** flat JSON/SQLite. No heavy backend. State (read/archived) lives here too, mirrored from the app via simple state-change writes.
 - Ships with **auto-HTTPS** (see Networking).
 
@@ -37,7 +37,7 @@ The data-owning core. Self-hosted, typically a Docker bundle alongside Hermes.
 - Card list, detail view, archive flow (with undo), pull-to-refresh, search.
 - **Home-screen widget** — latest digests + unread count; tap-through deeplinks open the app to that digest. No buttons. Refreshes on the widget's own `TimelineProvider` schedule, pulling `GET /summary`.
 - **Demo mode** — bundled canned digests; first-run default and the only thing a non-self-hoster (incl. an App Reviewer) sees.
-- **QR pairing**; companion URL + token in the **Keychain**.
+- **Pairing** — manual companion URL + token entry today; QR scan is *planned, not shipped*. Either path stores companion URL + token in the **Keychain**.
 
 ## Networking & TLS
 
@@ -49,8 +49,11 @@ The data-owning core. Self-hosted, typically a Docker bundle alongside Hermes.
 
 ## Pairing & trust
 
-- Pairing is a **QR scan**: the companion (on deploy) exposes a QR encoding `{companion_url, pairing_token}`; the app scans it, validates by hitting the companion over HTTPS, and stores both in the **Keychain**. Manual URL+token entry is the fallback for the QR-averse.
-- Result: the only credential in the loop is the pairing token, held by the user's companion and by their phone's Keychain. No third party participates in pairing.
+- **Pairing endpoints are gated, default OFF.** `GET /` and `GET /pair` return `{companion_url, pairing_token}` — the credential itself, in the response body — so they must not be reachable in normal operation. They are gated behind the env flag **`CROWLY_PAIR_ENABLED`**, which defaults to false; when disabled both endpoints return **404**. Turn it on only for the brief initial-pairing window, pair the phone, turn it off, restart.
+- **Why gated:** the companion is fronted by a public Tailscale Funnel hostname, and public HTTPS names are enumerated in **Certificate Transparency logs** — the Funnel URL is not a secret. An always-on unauthenticated pairing endpoint on a CT-discoverable hostname = a public token leak. The first-deploy leak that motivated this fix is captured in `docs/deployment-learnings.md`.
+- **`/health` stays unauthenticated** as a liveness probe, but no longer includes the stored digest count when pairing is disabled (it was leaking activity metadata to anyone scanning the Funnel URL).
+- **Pairing UX** — manual companion URL + token entry today; QR scan is *planned, not shipped*. Either way the app stores both in the phone **Keychain**; the only credential in the loop is the pairing token, held by the user's companion and by their phone's Keychain. No third party participates in pairing.
+- **Token rotation** — because the Funnel URL is public, the pairing token must be rotatable, and any exposed token (e.g. one that lived behind an ungated pairing endpoint) is treated as compromised. The operator runbook is in `docs/deployment-learnings.md`.
 
 ## Refresh model
 
@@ -67,7 +70,8 @@ The data-owning core. Self-hosted, typically a Docker bundle alongside Hermes.
 ## Security notes
 
 - Companion secrets (the pairing token, any HTTPS cert material) live in `/opt/data/.env` on the user's VPS — plaintext-but-gitignored, never in any vault or this repo.
-- The companion authenticates app requests by the pairing token; rate-limit on auth failures to deter token-guessing.
+- The companion authenticates app requests by the pairing token. **Auth-failure rate limiting is *planned, not shipped*** — not yet in M1.
+- Pairing exposure is default-off: see "Pairing & trust" for the `CROWLY_PAIR_ENABLED` gate and the token-rotation runbook in `docs/deployment-learnings.md`.
 
 ## Deliberately deferred
 

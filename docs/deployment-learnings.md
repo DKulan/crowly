@@ -137,3 +137,51 @@ QR."** Not zero-touch, but a world away from the manual path in this doc.
 The `setup-crowly` skill must be a **pinned, reviewable skill** — never "tell
 the agent to fetch and run instructions from a live URL." A compromised/spoofed
 page would run arbitrary commands on the user's VPS. Pin it, review the diff, run it.
+
+## Pre-deploy gate: run the security reviewer
+
+**Before any companion deploy or redeploy, run the `security-reviewer` teammate
+over the companion + emitter changes.** This is a process gate, not automation —
+kept deliberately low-noise. It exists because the first deploy shipped a live
+credential leak: `GET /` and `GET /pair` returned the bearer token
+unauthenticated, reachable over the public Tailscale Funnel hostname (public
+HTTPS names appear in Certificate Transparency logs, so the URL is not secret).
+The reviewer's job is to confirm no unauthenticated endpoint returns a secret,
+pairing exposure is default-off (`CROWLY_PAIR_ENABLED`) and gated, and the
+pairing token has a rotation story. Don't deploy with unresolved P0/P1 findings.
+
+## Runbook: rotate the pairing token
+
+The token that lived behind the ungated `/pair` on the first deploy must be
+treated as **compromised** (public Funnel URL → CT logs → anyone could have
+pulled it). This is the concrete rotation procedure; run it once now to burn the
+exposed token, and again anytime a token has been exposed (log paste, screenshot,
+misfired curl, suspected compromise).
+
+1. **Generate a new token** on the VPS and put it in `/opt/data/.env`:
+   ```
+   CROWLY_PAIRING_TOKEN=<paste of `openssl rand -hex 32`>
+   ```
+   Same file for `CROWLY_PAIR_ENABLED` — leave it **unset (or false)** for
+   normal operation. Only flip it to `true` for the brief pairing window below,
+   then unset it again.
+2. **Restart the companion** so it picks up the new token:
+   `docker compose -f docker-compose.local.yml up -d --force-recreate`.
+   Confirm: `curl -s <funnel-url>/pair` should return **404** (pairing disabled).
+3. **Open the pairing window, re-pair the phone, close it.** Set
+   `CROWLY_PAIR_ENABLED=true` in `/opt/data/.env`, restart the companion,
+   fetch `<funnel-url>/pair` once to get `{companion_url, pairing_token}`, enter
+   them in the app (Keychain overwrites the old token). Then **unset
+   `CROWLY_PAIR_ENABLED` and restart again** — leaving it on is the same leak
+   we just fixed.
+4. **Update the emitter's env** so cron emits keep working: `CROWLY_TOKEN` in
+   the Hermes compose `.env` (or wherever the `emit-crowly-digest` skill reads
+   its token). Restart/redeploy Hermes so the skill picks it up.
+5. **Verify end-to-end:**
+   - `curl -s <funnel-url>/pair` → non-200 (404) — pairing is off.
+   - Paired app can read `/list` — old token is dead, new token works.
+   - Trigger a Hermes emit (or wait for the next cron) — the digest lands in
+     the app inbox, proving the emitter has the new token too.
+
+Any step that 401s is the signal: something is still holding the old token.
+Track it down before re-enabling pairing.
