@@ -40,12 +40,18 @@ enum CrowKind: String, CaseIterable {
     var placeholderSymbol: String { "bird.fill" }
 
     /// The motion personality for this screen.
+    ///
+    /// Flap amplitudes are deliberately small (≤6°): in this wings-up pose the
+    /// raised fan sits over a narrow slice of body, so a large rotation would
+    /// swing the wing's own anti-aliased edge out over open silhouette and
+    /// flash a hairline seam. Small flaps keep the stroked edge seated on the
+    /// body while still reading as a live flutter. hermes stays the liveliest.
     var motion: CrowMotionProfile {
         switch self {
-        case .welcome:   CrowMotionProfile(bob: 7, tilt: 1.4, flap: 9,  drift: 8,  period: 2.8)
-        case .companion: CrowMotionProfile(bob: 6, tilt: 0.8, flap: 7,  drift: 6,  period: 3.0)
-        case .hermes:    CrowMotionProfile(bob: 8, tilt: 1.0, flap: 14, drift: 12, period: 2.4)
-        case .pair:      CrowMotionProfile(bob: 7, tilt: 1.2, flap: 8,  drift: 9,  period: 2.7)
+        case .welcome:   CrowMotionProfile(bob: 7, tilt: 1.4, flap: 4, drift: 8,  period: 2.8)
+        case .companion: CrowMotionProfile(bob: 6, tilt: 0.8, flap: 3, drift: 6,  period: 3.0)
+        case .hermes:    CrowMotionProfile(bob: 8, tilt: 1.0, flap: 6, drift: 12, period: 2.4)
+        case .pair:      CrowMotionProfile(bob: 7, tilt: 1.2, flap: 4, drift: 9,  period: 2.7)
         }
     }
 }
