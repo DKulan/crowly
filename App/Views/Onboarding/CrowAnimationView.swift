@@ -1,13 +1,14 @@
 // CrowAnimationView — the layered crow hero that fronts each onboarding screen.
 //
-// The crow is composed from three transparent PNG layers, all registered on the
-// same square canvas (extracted from the app-icon crow art) so they reassemble
-// with no offset:
-//   • crow-body  — the complete ink-black crow (solid back, so no hole shows
-//                  when the wing lifts); head, eye, beak, tail all intact.
-//   • crow-lines — the orange/grey speed streaks trailing behind.
-//   • crow-wing  — the upper feather-fan, with a shoulder root that overlaps the
-//                  back so it flaps cleanly around the shoulder.
+// The crow is a sleek wings-up flight pose (matched to the reference art),
+// composed from three transparent PNG layers all registered on the same square
+// canvas so they reassemble with no offset:
+//   • crow-body  — the complete ink-black crow with a FILLED shoulder (the
+//                  "clean" body variant), so no cutout shows when the wing
+//                  rotates away; head, eye, beak, tail all intact.
+//   • crow-lines — the thin tapered orange/grey speed streaks trailing left.
+//   • crow-wing  — the raised swept-back wing fan, with a shoulder root that
+//                  overlaps the back so it flaps cleanly around the shoulder.
 // Stack order (bottom→top): body → lines → wing.
 //
 // A single `KeyframeAnimator` drives one `CrowMotion` value whose properties are
@@ -84,8 +85,9 @@ struct CrowAnimationView: View {
     private static let ink = Brand.ink
 
     /// Rotation anchor for the wing flap — the shoulder, where the wing joins
-    /// the back. Unit-space within the fitted square; tuned to the layer art.
-    private static let wingPivot = UnitPoint(x: 0.57, y: 0.50)
+    /// the back. Unit-space within the fitted square; measured from the
+    /// reference-matched wings-up layer art (self-check pivot ≈ 0.625, 0.542).
+    private static let wingPivot = UnitPoint(x: 0.625, y: 0.542)
 
     /// True when all three layer assets are present. When false we fall back to
     /// the flat single crow (older behavior) so the view never breaks.
