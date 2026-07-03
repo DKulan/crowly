@@ -36,6 +36,57 @@ public enum Radius {
     public static let pill:      CGFloat = 28
 }
 
+// MARK: - Motion
+//
+// The motion vocabulary — named curves so timing lives in one place instead of
+// scattered inline literals. Crowly's motion philosophy is split: the inbox and
+// detail stay deliberately calm (a dot vanish, a system row-removal), while the
+// first-run onboarding carousel is allowed to be *rich* (staged reveals, a hero
+// hand-off, an ambient crow). These tokens serve both — the calm surfaces reuse
+// `press` / `settle`, and onboarding layers on `reveal` / `ambient` / `stagger`.
+//
+// Every animated state change should route through here (and through
+// `Motion.maybe(_:reduceMotion:)` so Reduce Motion is honored consistently).
+public enum Motion {
+    /// State changes that should feel immediate and crisp — page advance, list
+    /// updates. A small-bounce spring; the app's default "something changed".
+    public static let pageAdvance: Animation = .snappy
+
+    /// Micro-interaction: button press-dim / scale. Fast, no bounce.
+    public static let press: Animation = .snappy(duration: 0.15)
+
+    /// A control settling into place — the page-indicator pill sliding between
+    /// dots, a chip resizing. Slightly slower than `press`, still no overshoot.
+    public static let settle: Animation = .snappy(duration: 0.25)
+
+    /// Onboarding element entrance — hero → headline → divider → body arriving.
+    /// A gentle spring with a hint of life; paired with `stagger` delays.
+    public static let reveal: Animation = .spring(response: 0.55, dampingFraction: 0.82)
+
+    /// The hero element settling after the onboarding → inbox hand-off. Softer
+    /// and a touch slower so the carry-through reads as one continuous motion.
+    public static let heroSettle: Animation = .spring(response: 0.65, dampingFraction: 0.9)
+
+    /// The crow's continuous ambient loop (bob / drift / flap). Long, smooth,
+    /// autoreversing — never call this without gating on Reduce Motion.
+    public static let ambient: Animation = .easeInOut(duration: 2.2).repeatForever(autoreverses: true)
+
+    /// Base per-element delay for a staggered onboarding reveal. Element `n`
+    /// arrives at `n * stagger` seconds after its page becomes active.
+    public static let stagger: Double = 0.08
+
+    /// Delay for the element at `index` in a staggered reveal sequence.
+    public static func revealDelay(_ index: Int) -> Double { Double(index) * stagger }
+
+    /// Gate an animation on Reduce Motion: returns `nil` (no animation) when the
+    /// user has Reduce Motion enabled, so a `.animation(Motion.maybe(...), value:)`
+    /// or `withAnimation(Motion.maybe(...) ?? ...)` holds still. Callers that
+    /// need a hard fallback can coalesce (`?? .default`).
+    public static func maybe(_ animation: Animation, reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : animation
+    }
+}
+
 // MARK: - Brand palette (fixed, sampled from the app icon + onboarding art)
 //
 // These are literal sRGB values — the one sanctioned place for
@@ -224,7 +275,7 @@ public struct CrowlyPrimaryButtonStyle: ButtonStyle {
             )
             .opacity(configuration.isPressed ? 0.85 : 1.0)
             .scaleEffect(configuration.isPressed ? 0.99 : 1.0)
-            .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+            .animation(Motion.press, value: configuration.isPressed)
     }
 }
 

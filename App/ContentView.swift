@@ -30,7 +30,9 @@ struct ContentView: View {
             inbox
             if !hasOnboarded {
                 OnboardingView { startPairing in
-                    withAnimation(.snappy) { hasOnboarded = true }
+                    // Cross-fade the cover away as the onboarding's own lift-off
+                    // completes — the two overlap into one continuous hand-off.
+                    withAnimation(Motion.heroSettle) { hasOnboarded = true }
                     // Hand off to the pairing sheet InboxView already owns,
                     // via the router slot it observes. Deferred a beat so the
                     // sheet presents after the onboarding cover transitions out.
