@@ -169,6 +169,11 @@ the git tag all pointing at the same release.
 - [x] Release tag cut; `fetch_companion.py` `DEFAULT_REF` + SKILL.md `--ref` match it. *(v1.0.0, 2026-07-03)*
 - [x] `security-reviewer` run over both skills (process gate, `docs/deployment-learnings.md`). *(2026-07-03; no P0, P2/P3 fixed)*
 - [x] Both `SKILL.md` frontmatters valid (name, description ≤1024, `platforms: [macos, linux]`).
-- [ ] `hermes skills publish` run for both skills; note the real install identifier.
+- [x] `hermes skills publish` run for both skills. *(2026-07-03 — setup-crowly
+  via PR #1, emit-crowly-digest via PR #2; both merged, published copies live
+  under `skills/<name>/` and verified byte-identical to
+  `emitter/hermes-skill/<name>/`. Install identifiers `DKulan/setup-crowly` /
+  `DKulan/emit-crowly-digest` still to be confirmed by the install smoke test
+  below.)*
 - [ ] `hermes chat --toolsets skills -q "use setup-crowly ..."` smoke-tested (the guide's Test-It step).
 - [ ] A real fresh-host dry-run done at least once (the Tier-2 test) before the public "just tell your agent" claim.
