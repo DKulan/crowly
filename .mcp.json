@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ios-simulator": {
+      "command": "npx",
+      "args": ["-y", "ios-simulator-mcp"],
+      "env": {
+        "IOS_SIMULATOR_MCP_DEFAULT_OUTPUT_DIR": "/tmp/crowly-shots",
+        "IOS_SIMULATOR_MCP_FILTERED_TOOLS": "ui_tap,ui_type,ui_swipe,ui_describe_point,ui_find_element,ui_describe_all"
+      }
+    }
+  }
+}
