@@ -6,15 +6,22 @@ The step-by-step a single user follows to install Crowly and connect it to their
 - 🔨 **needs building** — design is settled (see linked doc), code isn't there yet.
 - 👤 **irreducibly human** — a step automation can't take for the user.
 
-This is the **manual single-user path** (M1). The agent-driven seamless install — a Hermes `setup-crowly` skill that provisions the companion for the user — is **M2 "stranger onboarding"** (`docs/roadmap.md` § M2 step 7). Under the original **M1-gates-M2** rule this waited on the two-week test (`docs/validation.md`); the owner **waived that gate 2026-07-02**, so M2 (including `setup-crowly`) is now in scope — the two-week test is retained as a fallback, not a blocker.
+This is the **manual single-user path** (M1) — and the team's debug checklist. The agent-driven seamless install — a Hermes `setup-crowly` skill that provisions the companion for the user — is **now built** (`emitter/hermes-skill/setup-crowly/`, M2 "stranger onboarding", `docs/roadmap.md` § M2 step 7). Under the original **M1-gates-M2** rule this waited on the two-week test (`docs/validation.md`); the owner **waived that gate 2026-07-02**, so M2 (including `setup-crowly`) came into scope. **Keep both paths in this doc:** the seamless path below is the one most users take; the manual runbook stays as the fallback and the debug checklist when the automated install goes sideways.
 
-> **Security rule for the future installer:** it must be a **pinned, reviewable Hermes skill**, never "tell the agent to fetch and run instructions from a live URL." Live-URL install is a supply-chain footgun — a compromised or spoofed page would run arbitrary commands on the user's VPS. Pin the skill, review the diff, then run it.
+> **The seamless path (3 steps, the blog flow):**
+> 1. **Install the Crowly app** (App Store / TestFlight).
+> 2. **Install the `setup-crowly` skill from the Hermes Skills Hub and ask Hermes to run it** — `hermes skills install DKulan/setup-crowly`. It fetches the companion source itself (a pinned clone — Step 0 below), detects the host, stands up the companion, gives it a Tailscale-Funnel HTTPS address, mints a pairing token + renders a pairing QR *locally on the host*, and installs the `emit-crowly-digest` skill + a starter cron so the inbox isn't empty on first open. (No need to pre-clone the monorepo — the skill pulls the companion source in Step 0.)
+> 3. **Click one tunnel auth, then scan the QR** in the app.
+>
+> That's the realistic M2 ceiling — "install app → ask Hermes → click one auth → scan one QR." Both skills live on the **Hermes Skills Hub** and are security-scanned on install (`docs/publishing-skills.md` is the publish runbook); the `setup-crowly` skill playbook is `emitter/hermes-skill/setup-crowly/SKILL.md`, and the manual steps below are what it automates (and your fallback when a step needs a human eye). To inspect from source instead of the hub, clone the repo and copy `emitter/hermes-skill/setup-crowly/` onto the host — same skill, no hub scan.
+
+> **Security rule for the installer:** it is a **pinned, reviewable Hermes skill** — installed from the Hermes Skills Hub (`hermes skills install`, which runs Hermes's security scan) or copied from a source checkout, never "tell the agent to fetch and run instructions from a live URL." Live-URL install is a supply-chain footgun — a compromised or spoofed page would run arbitrary commands on the user's host. The skill's Step 0 fetches the companion source via a **pinned clone** (`scripts/fetch_companion.py`, a specific release tag), which is still pinned-and-reviewable — a known commit, not a live-run of remote instructions. The `setup-crowly` provisioner honors this: it is **plan-first** (prints what it will do, only mutates under `--apply`) and never runs the human-in-the-loop steps.
 
 ---
 
 ## Where the companion can run
 
-**The companion is dependency-free Python 3 + sqlite3** (`companion/server.py`, env-var configured via `Config.from_env`). It runs as a bare process — `python3 -m companion` — anywhere Python 3 runs. **Docker is a packaging convenience, not a requirement.** The Docker/Compose steps below are one concrete worked example (Daniel's VPS+Docker setup, the one in `docs/deployment-learnings.md`); they are not the only path. Users run heterogeneous setups, and the runbook (and the future `setup-crowly` installer) must span them:
+**The companion is dependency-free Python 3 + sqlite3** (`companion/server.py`, env-var configured via `Config.from_env`). It runs as a bare process — `python3 -m companion` — anywhere Python 3 runs. **Docker is a packaging convenience, not a requirement.** The Docker/Compose steps below are one concrete worked example (Daniel's VPS+Docker setup, the one in `docs/deployment-learnings.md`); they are not the only path. Users run heterogeneous setups, and the runbook (and the `setup-crowly` installer — `emitter/hermes-skill/setup-crowly/`, which detects the host shape and branches across all three) must span them:
 
 | Topology | Run the companion as | TLS approach | Always-on? |
 |---|---|---|---|
@@ -121,7 +128,7 @@ The companion exposes `GET /pair`, which returns `{companion_url, pairing_token}
 
 ---
 
-## Step 4 — Wire the emitter into Hermes ✅ helper + real companion / 🔨 Hermes-skill install
+## Step 4 — Wire the emitter into Hermes ✅ helper + real companion + `setup-crowly` skill
 
 The emitter kit is in `emitter/` and the wire contract is in `docs/emitter.md`. The helper builds the envelope (`schema_version`, `id`, `created_at`), validates required fields, and POSTs to `{companion_url}/ingest` with `Authorization: Bearer <pairing_token>`.
 
@@ -144,7 +151,7 @@ hermes-run morning-briefing | python3 /opt/crowly/crowly_emit.py
 - **Exit `2` (validation error)** — required field missing or `urgency` not in `low|normal|high|urgent`. The error names the field; fix the LLM prompt, not the helper.
 - **Exit `3` (transport error)** — wrong URL, cert untrusted, or `401`. Same diagnosis as Step 2/3.
 
-> **Today: helper is verified against the real companion** — the end-to-end test in `companion/test_end_to_end.py` exercises ingest → list → summary → state through the same wire contract the helper writes. The only remaining gap is the **Hermes-skill registry install** itself: `emitter/hermes-skill/` contains a pinned-skill wrapper, but actually installing it into a live Hermes deployment is still manual/unverified (🔨). Per the security note above, that install must remain a pinned, reviewable skill — never a live-URL fetch.
+> **Today: helper is verified against the real companion, and the `setup-crowly` skill automates this whole step.** The end-to-end test in `companion/test_end_to_end.py` exercises ingest → list → summary → state through the same wire contract the helper writes. Beyond that, the `setup-crowly` skill (`emitter/hermes-skill/setup-crowly/`) installs `emit-crowly-digest` from the Skills Hub (`hermes skills install DKulan/emit-crowly-digest`), sets the two env vars using the *internal* companion address, and offers a starter cron — so a stranger doesn't hand-wire this (`setup-crowly/SKILL.md` § Step 5). The `emit-crowly-digest` skill declares `CROWLY_COMPANION_URL`/`CROWLY_TOKEN` as `required_environment_variables`, so Hermes prompts for them and passes them into the sandbox on load. Per the security note above, both skills are pinned, reviewable, hub-scanned skills — never a live-URL fetch. What's still manual is content authorship (writing the cron's digest prompt).
 
 ---
 
@@ -170,7 +177,7 @@ This is what the two-week test was designed to measure (`docs/validation.md`; th
 | 1. Install the app | ✅ mechanism / 🔨 distribution | TestFlight + App Store (M2) |
 | 2. Stand up the companion | ✅ built / 👤 deploy | Operator runs it on their host — `docker compose up` (VPS+Docker) *or* bare `python3 -m companion` (no-Docker VPS / personal computer); TLS from Funnel (default), bundled Caddy, or an existing proxy |
 | 3. Pair the phone | ✅ manual entry + QR scan (QR shipped M2 Phase 3b) | — |
-| 4. Wire the emitter | ✅ helper against real companion / 🔨 Hermes-skill registry install | Pinned-skill install into a live Hermes deployment |
+| 4. Wire the emitter | ✅ helper against real companion + `setup-crowly` skill built (`emitter/hermes-skill/setup-crowly/`), distributed via the Skills Hub (`hermes skills install DKulan/setup-crowly`, `docs/publishing-skills.md`) | Writing the cron's digest content (per-user) |
 | 5. Steady state | ✅ app + **live widget** built (widget fetches `/summary` on its own timeline, App Group fallback — Phase 1, 2026-07-02); the live loop runs once Steps 2–4 are deployed | The two-week behavioral test — **waived 2026-07-02**; retained as fallback, not a remaining blocker (`docs/validation.md`) |
 
-The gap at a glance: **the software is built** — including the live companion-backed widget (M1 Phase 1). What remains is operator deployment (Step 2 onto the user's VPS) and the Hermes-skill registry install (Step 4). The M1 behavioral gate — the two-week validation test (`docs/validation.md`) — was **waived 2026-07-02** (owner decision; M2 proceeds on daily use), so it is no longer a remaining blocker; it stays on the shelf as the honest fallback if the reader stops earning its tap.
+The gap at a glance: **the software is built** — including the live companion-backed widget (M1 Phase 1) and the `setup-crowly` installer that automates Steps 2–4 across all three topologies (`emitter/hermes-skill/setup-crowly/`). What remains is just running that install on the user's host (still needs the one auth click + QR scan). A **published companion image is not required** — the install ships as a repo checkout, which already provides the `companion/` + `emitter/` sibling layout the Docker build needs, and the two bare-process branches skip Docker entirely; it's deferred as an optional convenience, to revisit only if cloning the full repo proves to be real friction (`docs/roadmap.md` § M2 step 7). The M1 behavioral gate — the two-week validation test (`docs/validation.md`) — was **waived 2026-07-02** (owner decision; M2 proceeds on daily use), so it is no longer a remaining blocker; it stays on the shelf as the honest fallback if the reader stops earning its tap.

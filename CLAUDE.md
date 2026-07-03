@@ -2,7 +2,7 @@
 
 Crowly is a native iOS **inbox/reader** for recurring AI-agent/automation outputs — AI news summaries, weather, local community updates, scheduled briefings, reminders. Stage: **M2 build in progress** (as of 2026-07-02). M1 is built and live end-to-end — the iOS app is verified on-device (unpaired = demo fixtures; paired = live companion pull, including a live-data home-screen widget as of Phase 1, 2026-07-02), and the design docs were rewritten away from the earlier "job-bound response loop" framing. The two-week behavioral validation gate (`docs/validation.md`) was **deliberately waived on 2026-07-02 by owner decision** (see that doc's waiver note); M2 proceeds on the owner's daily-use conviction rather than the formal gate. The repo/dir is `agent-output-inbox`; the product ships as **Crowly**.
 
-The shape (so you can orient without reading everything): three artifacts — an **iOS app** (App Store) talks directly to a **companion service** (self-hosted per user on their own host — a bare `python3 -m companion` process or a Docker bundle; Docker is a packaging convenience, not a requirement — on a VPS or a personal computer) for all content on a pull/timeline-refresh cycle; an **emitter kit** (helper + Hermes skill) makes agents emit schema-valid digests.
+The shape (so you can orient without reading everything): three artifacts — an **iOS app** (App Store) talks directly to a **companion service** (self-hosted per user on their own host — a bare `python3 -m companion` process or a Docker bundle; Docker is a packaging convenience, not a requirement — on a VPS or a personal computer) for all content on a pull/timeline-refresh cycle; an **emitter kit** (helper + Hermes skills: `emit-crowly-digest` to emit schema-valid digests, and `setup-crowly` — `emitter/hermes-skill/setup-crowly/` — a pinned agent-driven installer that stands up + wires the companion across all three host topologies) makes agents emit schema-valid digests. Both skills are published to the **Hermes Skills Hub** (`hermes skills install DKulan/setup-crowly` / `DKulan/emit-crowly-digest`; publish runbook in `docs/publishing-skills.md`); `setup-crowly` fetches the companion source itself via a pinned clone (Step 0, `scripts/fetch_companion.py`).
 
 ## Working in this repo
 
@@ -14,6 +14,7 @@ Part design docs, part code. The **iOS app** (M1 demo mode) is a real Swift/Swif
 - `docs/schema.md` — the digest contract and its versioning policy. **The contract is the product.**
 - `docs/architecture.md` — the three artifacts; companion ingest/serve, TLS, pairing, privacy.
 - `docs/emitter.md` — the `POST /ingest` wire contract + emitter kit (helper + Hermes skill); implementation in `emitter/` (Python stdlib helper, test companion stub).
+- `docs/publishing-skills.md` — how the two Crowly skills (`setup-crowly`, `emit-crowly-digest`) get published to the Hermes Skills Hub so a stranger can `hermes skills install` them; the M2 distribution runbook + security-scan expectations.
 - `docs/ux.md` — the M1 iOS interaction spec (inbox: read + archive; digest detail: header → bottom line → summary → sections → sources; the read-only widget).
 - `docs/design-system.md` — tokens, components with SwiftUI sketches, FNV-1a job-color algo.
 - `docs/validation.md` — the M1 two-week personal test and reader-shape kill criteria.

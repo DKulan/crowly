@@ -34,7 +34,7 @@ Three parts — two run, one shipped:
 
 - **iOS app** (App Store) — list, detail, **home-screen widget** (pull/timeline-refresh), demo mode, QR pairing, Keychain.
 - **Companion service** (on each user's own host — a bare `python3 -m companion` process or a Docker bundle; Docker optional — on a VPS or a personal computer) — validates/stores digests and serves them (`GET /list`, `GET /summary`). Auto-HTTPS bundled; Tailscale Funnel is the cross-topology TLS default.
-- **Emitter kit** — a helper + Hermes skill that makes any agent emit schema-valid digests.
+- **Emitter kit** — a helper + Hermes skills that make any agent emit schema-valid digests (`emit-crowly-digest`), plus a `setup-crowly` skill that stands up the companion + wires emission across all three host topologies. Both skills are published to the **Hermes Skills Hub** — installable via `hermes skills install DKulan/setup-crowly` (and `DKulan/emit-crowly-digest`); see [`docs/publishing-skills.md`](docs/publishing-skills.md).
 
 See [`docs/architecture.md`](docs/architecture.md) for the full diagram and flow.
 
@@ -51,7 +51,8 @@ See [`docs/architecture.md`](docs/architecture.md) for the full diagram and flow
 - [`docs/concept.md`](docs/concept.md) — full concept, positioning, target users, competition, risks.
 - [`docs/schema.md`](docs/schema.md) — the digest JSON schema and the versioning policy (the part that makes the contract survive drift between independently-deployed parts).
 - [`docs/architecture.md`](docs/architecture.md) — app + companion + emitter; TLS, pairing, privacy.
-- [`docs/emitter.md`](docs/emitter.md) — the `POST /ingest` wire contract and the emitter kit (helper + Hermes skill). Implementation in [`emitter/`](emitter/).
+- [`docs/emitter.md`](docs/emitter.md) — the `POST /ingest` wire contract and the emitter kit (helper + Hermes skills: `emit-crowly-digest` to send digests, `setup-crowly` to install + wire the companion). Implementation in [`emitter/`](emitter/).
+- [`docs/publishing-skills.md`](docs/publishing-skills.md) — how the two Crowly skills get published to the Hermes Skills Hub so a stranger can `hermes skills install` them (the M2 distribution runbook + security-scan expectations).
 - [`docs/ux.md`](docs/ux.md) — the M1 iOS UI/UX: inbox, digest detail, the home-screen widget.
 - [`docs/design-system.md`](docs/design-system.md) — tokens, components with SwiftUI sketches, FNV-1a job-color algo.
 - [`docs/validation.md`](docs/validation.md) — the M1 two-week personal test, success criteria, kill criteria (the gate was **waived 2026-07-02**; retained as design history + fallback).
