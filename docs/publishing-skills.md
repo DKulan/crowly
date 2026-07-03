@@ -73,6 +73,13 @@ The publish step also needs **GitHub write auth** on the host running `hermes`
 repo, Contents: read+write** — it sits in a plaintext env file on that host, so
 give it nothing more.
 
+**What publish actually does (observed 2026-07-03):** it does *not* push to
+`main` — it opens a **pull request** that adds the skill folder (verbatim copy)
+under a top-level `skills/<name>/` directory, the layout the hub tap reads.
+**Merging that PR is the publish.** Review it (should be additions-only,
+byte-identical to the source folder) and merge as the personal account.
+`setup-crowly` v1.0.0 landed via PR #1.
+
 (If publishing to a dedicated skills repo instead of the monorepo, point
 `--repo` there and adjust the install identifiers below to match.)
 
@@ -115,6 +122,11 @@ is **CAUTION** with ~18 findings — all inherent to what an installer skill *is
 path, prose that mentions `sudo` for user-run steps). That residue is the
 expected steady state: publish with `--force`, and treat any **new** CRITICAL
 or a DANGEROUS verdict as a regression to fix.
+
+*(CLI nit: the scanner's "Use `--force` to override" hint is misleading —
+`hermes skills publish` has no `--force` flag. On a CAUTION verdict the
+publish proceeds anyway and opens the PR; the "BLOCKED" decision line applies
+to install-time gating, not to publishing.)*
 
 ## Step 4 — Re-publish on change
 
