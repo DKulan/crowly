@@ -214,3 +214,240 @@ The review does not argue against Crowly. It argues that the project is close en
 2. A demo-only widget undermining the central validation loop.
 
 Both are practical, bounded fixes. After those, the next milestone should be usage evidence, not more architecture or distribution work.
+
+---
+
+# Follow-up Fable 5 Findings — Post-redesign / build 6
+
+Date: 2026-07-03
+Reviewer: Claude Code using `claude-fable-5` with `--fallback-model opus --effort high`
+Scope: read-only product/code/architecture inspection after pulling latest `main` through commit `9a6d208` (`chore: bump build to 6 for TestFlight; declare export-compliance exempt`).
+
+## What was inspected
+
+The follow-up review reported inspecting:
+
+- `docs/fable-findings.md` and current docs under `docs/`
+- `CLAUDE.md`, `README.md`
+- recent git history since the first findings
+- iOS app, shared model/theme/network code, widget code, and tests under:
+  - `App/`
+  - `Shared/`
+  - `Widget/`
+  - `Tests/`
+- companion and emitter code under:
+  - `companion/`
+  - `emitter/`
+- `.claude/agents` and `.claude/skills` additions, enough to assess usefulness/noise
+
+Not run or built during this review:
+
+- Xcode project / Swift tests
+- Python companion/emitter suites
+
+Reason: Fable reported that test execution was denied by the permission gate in its session. Runtime behavior below is therefore source-inspection-based unless otherwise stated.
+
+## Overall verdict
+
+Fable 5 judged Crowly as **stronger overall**, with one important caveat:
+
+> Stronger, with one new P1 the redesign sprint shipped right past.
+
+The prior review's two P0s are largely closed in code:
+
+- `/pair` is gated default-off and wired through compose files.
+- The widget now has a real live-data path.
+
+However, Fable found that recent work was heavily weighted toward brand/TestFlight polish while a trust-critical widget failure mode may remain: **the paired widget can silently degrade to demo fixtures after a locked-device refresh and then stop refreshing.**
+
+## Material improvements since the prior review
+
+### `/pair` exposure appears fixed in code
+
+Fable found:
+
+- `companion/server.py` gates `/` and `/pair` unless `CROWLY_PAIR_ENABLED` is set.
+- Gate behavior covers path-normalization cases such as query/trailing slash variants.
+- Unknown paths return auth-gated responses rather than route enumeration help.
+- `/health` no longer leaks digest count.
+- Compose files include the pairing flag wiring.
+
+Remaining operator caveat: the live token still needs confirmed rotation; the code fix does not revoke any token that was already exposed.
+
+### Live widget path shipped
+
+Fable found the widget path is now real:
+
+- Widget fetches `/summary` off-main.
+- Uses an approximately 15-minute `.after` reload policy.
+- Falls back to App Group snapshot on fetch failure.
+- Both targets declare App Group and shared Keychain group entitlements in `project.yml`.
+- The widget remains read-only; no `Button(intent:)` pattern was found.
+
+### Schema v2 content blocks are directionally good
+
+Fable judged schema v2 content blocks as a real product improvement, not mere polish:
+
+- Additive display-only block types.
+- No action-shaped fields or callback semantics.
+- Unknown block types can degrade/preserve enough for forward compatibility in the current companion-backed model.
+- `docs/schema.md` explicitly guards against callout-as-button drift.
+
+### Docs and design discipline mostly held
+
+Fable found that the docs mostly stayed honest despite fast iteration:
+
+- Validation-gate waiver is recorded across docs.
+- `architecture.md` marks pagination/rate-limiting as planned, not shipped.
+- Redesign was reconciled with `design-system.md`.
+- Brand tokens are centralized in `Shared/Theme/Tokens.swift`.
+
+## New / remaining P0-P1 risks
+
+### P0
+
+Fable reported **no current P0s** from source inspection.
+
+### P1: widget may fall back to fake data after locked-device refresh
+
+Fable's highest-priority finding:
+
+- `Shared/Net/KeychainStore.swift` stores the pairing token with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
+- WidgetKit can run `getTimeline` while the device is locked, especially during overnight/background budget refreshes.
+- If the widget cannot read the token while locked, it can treat itself as unpaired.
+- The unpaired branch in `Widget/CrowlyWidget.swift` can return demo fixture data with `.never` policy.
+
+Likely effect if source reading matches device behavior:
+
+- A paired user can wake up to a widget showing fake demo digests as if real.
+- The widget may then freeze until the app foregrounds.
+- This is worse than the old demo-only widget because it is intermittent and easy to mistake for live content.
+
+Recommended fix:
+
+1. Store the shared pairing secret as `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`.
+2. In the widget's unpaired/failure branch, prefer an existing App Group snapshot over demo fixtures when a snapshot exists.
+3. Verify on-device after a locked overnight refresh; simulator verification is insufficient.
+
+### P1: token rotation still needs live confirmation
+
+Fable found the code/runbook now treat the prior pairing token as exposed, but source inspection cannot prove the live VPS token was rotated.
+
+Risk:
+
+- If the old token is still active, the `/pair` gate fix does not remediate prior exposure.
+- The token may have existed in container stdout / `docker logs` and Hermes/env/transcripts.
+
+Recommended action:
+
+- Confirm or run the token rotation from `docs/deployment-learnings.md` before relying on the live deployment.
+
+## P2 findings
+
+### Onboarding docs can recreate the `/pair` mistake
+
+Fable flagged that `docs/onboarding.md` and comments in compose files may still imply `/pair` is always available. An operator following stale instructions may set `CROWLY_PAIR_ENABLED=1` permanently and recreate the exposure.
+
+Recommended fix: update onboarding to describe `/pair` as a temporary setup mode that should be disabled after pairing.
+
+### Public companion should set a request timeout
+
+Fable suggested adding a small request timeout for the public Funnel-facing companion, e.g. `Handler.timeout = 30`, to reduce slowloris-style exposure.
+
+### Optimistic mark-read race remains
+
+The prior optimistic state mirror issue appears still open:
+
+- `DigestStore.markRead` updates local state and sends detached `POST /state`.
+- A timed refresh can replace local state with a stale server snapshot before the mirror completes.
+
+Likely impact:
+
+- A digest may briefly flip back unread after opening.
+- This is trust-eroding in daily use and matters more now that the formal validation gate was waived.
+
+### Missing un-pair/disconnect path
+
+Fable found `DigestStore.didDisconnect()` but no user-facing call path. Before broader TestFlight/public use, there should be a minimal un-pair path.
+
+## P3 / tracked issues
+
+Fable also noted lower-priority items:
+
+- `created_at` still appears text-sorted without UTC normalization on ingest, mitigated by the canonical emitter stamping UTC.
+- `/list` remains unbounded.
+- `DigestSection.id = heading` can still collide on duplicate headings.
+- URL handling should ensure `sources[].url` only opens expected schemes such as `http`/`https`.
+- Companion subpath URLs may silently break because client paths are root-relative.
+
+## Product/design critique
+
+Fable's product read:
+
+- The direction is still on-thesis.
+- Schema v2 content blocks are real product depth because they make agent digests more readable.
+- The redesign did not violate the core reader-only invariants.
+- But the last sprint leaned heavily toward polish: icon, palette, onboarding art, Lottie removal, TestFlight build churn.
+
+Blunt interpretation:
+
+> Build 6 is fine. Further visual polish before the daily-use trust bugs are fixed is procrastination with a progress bar.
+
+Fable specifically warned that with the validation gate waived, the daily-use loop is now the evidence base. Bugs that make the widget show fake data or make read-state flicker undermine the instrument being used to judge Crowly.
+
+## Engineering critique
+
+Positive findings:
+
+- Companion auth ordering appears correct on every route inspected.
+- Entitlement ordering hazards are documented in `project.yml`.
+- Swift widget provider code appears deliberate about sendability.
+- Git identity remains personal; no Salesforce/work-account commits were observed.
+
+Concerns:
+
+- Tests were not actually executed in this review.
+- Some tests may be tautological or misleading, especially around content-block preservation behavior.
+- Comments may overclaim round-trip fidelity for unknown fields inside known block types; production may not rely on this because the companion stores the canonical digest blob.
+- `CrowlyProvider` hardcodes `KeychainStore()` and `DigestStore` leans on shared/global session behavior, making the highest-risk runtime paths harder to test directly.
+- `.claude/agents` are mostly useful because they encode hard-won invariants, but several `.claude/skills/revyl-*` additions appear irrelevant/noisy for Crowly.
+- `run-crowly/SKILL.md` may be stale if it still claims no signing/App Group or an outdated test count.
+
+## Recommended order of work
+
+Fable recommended this priority order:
+
+1. Confirm or run live VPS token rotation.
+2. Fix widget keychain accessibility and demo fallback behavior.
+3. Fix the mark-read refresh/flicker race.
+4. Run Python suites and the Swift suite; record actual results.
+5. Patch docs/ops drift:
+   - onboarding `/pair` gate instructions;
+   - companion timeout;
+   - App Store naming status;
+   - roadmap waiver residue;
+   - misleading/tautological block test;
+   - stale `run-crowly` skill.
+6. Add a minimal un-pair path before any stranger uses a build.
+7. Resume daily-use validation and M2 installer work only after the trust bugs above are addressed.
+
+## What not to do next
+
+Fable explicitly advised against:
+
+- More brand/visual builds before trust bugs are fixed.
+- Starting schema v3.
+- Building generic ingest/input layers such as webhooks/RSS yet.
+- Adding broad settings surface beyond un-pair.
+- Expanding client-side digest encoding just to chase round-trip comments.
+- Re-litigating or performatively un-waiving the validation gate.
+
+## Interpretation
+
+The follow-up review is not a reversal of the first review. It says Crowly is now closer to real use, and therefore smaller trust bugs matter more:
+
+1. The live deployment needs confirmed token rotation.
+2. The widget must never silently present fake data as live data.
+3. Read-state changes must feel reliable.
+
+After that, usage evidence matters more than more polish.
