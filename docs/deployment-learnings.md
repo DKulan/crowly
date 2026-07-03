@@ -62,8 +62,16 @@ The Dockerfile does `COPY companion/ … COPY emitter/ …` — the companion im
 `crowly_emit.validate` from the emitter as its single source of truth. So you
 **cannot `scp` just `companion/`**; the build needs the repo layout (`companion/`
 + `emitter/` under a shared parent). We ended up with `/docker/crowly/{companion,emitter}`.
-- **M2 fix:** ship a **published image** (`docker pull`) or a self-contained
-  bundle. The two-folder build dependency is a packaging wart for strangers.
+- **M2 status:** *largely moot for the chosen install model.* `setup-crowly`
+  ships as a **repo checkout**, which already puts `companion/` + `emitter/`
+  under a shared parent — the exact layout the build needs. So the two-folder
+  dependency doesn't bite the automated install. A **published image**
+  (`docker pull`) or a self-contained tarball is deferred as an *optional*
+  convenience — worth it only if cloning the full monorepo proves to be real
+  friction for strangers, and even then a sparse tarball beats an image +
+  registry + signing pipeline. Note the coupling is intentional: the companion
+  imports `crowly_emit.validate` so validation has one source of truth —
+  "fixing" it by making `companion/` standalone would fork the validator.
 
 ### 2. Port 80/443 already taken (Traefik)
 The bundled Caddy compose (`docker-compose.yml`) binds :80/:443 →
@@ -150,6 +158,60 @@ a plain `restart` reruns stale code; (3) you MUST pass
 
 ## What the `setup-crowly` skill must do (derived requirements)
 
+> **Built (2026-07-03).** The skill now exists at
+> `emitter/hermes-skill/setup-crowly/` and encodes the fixes below rather than
+> rediscovering them.
+>
+> **Distribution is Skills-Hub-based, not "clone + copy."** Both skills are
+> published to the Hermes Skills Hub (`hermes skills publish … --to github
+> --repo DKulan/crowly`) and installed with `hermes skills install
+> DKulan/setup-crowly` / `DKulan/emit-crowly-digest`; hub installs are
+> security-scanned by Hermes. A hub-published skill is only `SKILL.md` +
+> `scripts/` — it does *not* carry the companion service — so `setup-crowly` now
+> fetches the companion source itself via a **pinned clone** (`scripts/fetch_companion.py`
+> checks out a release tag; snag #1's repo-checkout layout is satisfied by that
+> clone). Full publish runbook: **`docs/publishing-skills.md`**.
+>
+> Map of derived-requirement → where it's satisfied:
+> - **Detect the host shape / branch** → `scripts/detect_host.py` (read-only JSON
+>   verdict: docker daemon reachable, VPS-vs-laptop guess, :80/:443 contention,
+>   tailscale logged-in, python/sqlite3) → `recommendation.run_mode` + `tls` +
+>   `always_on_caveat`. Answers exactly the questions this section enumerates.
+> - **Three run branches (snags #1, #5)** → `scripts/provision.py`:
+>   `docker` (creates `crowly-net`, brings up `docker-compose.local.yml`, and
+>   writes a `docker-compose.override.yml` that attaches the agent container
+>   **preserving the `default` network** — snag #5), `bare-systemd` (a boot +
+>   restart-on-failure unit for a no-Docker VPS/desktop), and `bare-foreground`
+>   (ad-hoc laptop). Plan-first: prints the plan, only mutates under `--apply`.
+> - **Tailscale Funnel as default TLS (snag #3)** → SKILL.md Step 3; provision.py
+>   defaults `tls: funnel`.
+> - **Internal vs. external address (snag #4)** → provision.py + SKILL.md wire the
+>   emitter/agent to `http://crowly-companion:8787` (docker) / `127.0.0.1:8787`
+>   (bare) and the phone to the external Funnel URL; the plan print warns loudly
+>   about mixing them.
+> - **Always-on caveat (laptop branch)** → surfaced by detect_host.py's
+>   `always_on_caveat` and repeated in the bare-foreground plan.
+> - **Install `emit-crowly-digest` + starter cron** → SKILL.md Step 5.
+>
+> **Security improvement over this war story's pairing flow.** The manual runbook
+> below (§ *Runbook: rotate the pairing token*) flips the network `/pair`
+> endpoint **on**, pairs, then relies on the operator to flip it back **off** —
+> and any window it's open leaks full read+ingest access, because the public
+> Funnel hostname is discoverable in Certificate Transparency logs (the P0 in
+> § *Pre-deploy gate*). `scripts/render_pairing.py` **sidesteps that entire
+> class**: it mints the token (idempotently), writes it + the public URL to the
+> companion env file, **forces `CROWLY_PAIR_ENABLED` off**, and renders the
+> `{companion_url, pairing_token}` QR **locally on the host** (qrencode, with a
+> URL+token manual fallback). The secret moves host → phone via the scanned QR;
+> the unauthenticated `/pair` endpoint never has to open. Prefer this to the
+> flip-on/flip-off dance whenever the skill is available.
+>
+> Deferred, not blocking (not the skill's job): a **published companion image**
+> (snag #1). The install works off a repo/git checkout, which already supplies
+> the `companion/` + `emitter/` sibling layout — so the image is an *optional*
+> convenience, revisited only if the full-monorepo clone becomes real friction
+> (then a sparse tarball is the likelier fix than an image + registry pipeline).
+
 **First requirement: detect the host shape and branch — don't assume this
 topology.** The steps below are the VPS+Docker branch (the one deployed); the
 installer must first figure out which world it's in and adapt. It must **not** be
@@ -175,7 +237,10 @@ built VPS+Docker-only:
 
 Given host Docker access, an agent *can* automate most of the **VPS+Docker
 branch**:
-1. Get the companion image/bundle onto the host (published image solves #1).
+1. Get the companion code onto the host — the skill's Step 0
+   (`scripts/fetch_companion.py`) clones the repo at a **pinned ref**, which
+   supplies the `companion/` + `emitter/` layout — snag #1 doesn't bite; no
+   published image needed.
 2. **Detect the environment**: Docker present? existing proxy? Tailscale present?
    VPS vs. laptop? → pick the run mode + TLS strategy per the branching above.
 3. **Default to Tailscale Funnel** (#3): install tailscale, `tailscale up` (one

@@ -23,20 +23,43 @@ struct OnboardingView: View {
     let onFinish: (_ startPairing: Bool) -> Void
 
     @State private var page = 0
+    /// Drives the hero hand-off: when the user finishes, the whole composition
+    /// lifts + scales + fades ("lifting off into the app") before the parent
+    /// cross-fades this cover away to reveal the inbox. One continuous motion.
+    @State private var handingOff = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let screens = OnboardingScreen.all
 
+    /// Duration of the lift-off before the parent removes the cover. Kept just
+    /// under the `heroSettle` spring so the fade overlaps the tail of the lift.
+    private static let handoffLead: Duration = .milliseconds(420)
+
+    /// Run the hand-off, then tell the parent we're done. Under Reduce Motion we
+    /// skip the lift and finish immediately (the parent's cross-fade remains).
+    private func finish(startPairing: Bool) {
+        guard !reduceMotion else { onFinish(startPairing); return }
+        withAnimation(Motion.heroSettle) { handingOff = true }
+        Task {
+            try? await Task.sleep(for: Self.handoffLead)
+            onFinish(startPairing)
+        }
+    }
+
     var body: some View {
         ZStack {
-            // Full-bleed cream background
-            Brand.cream.ignoresSafeArea()
+            // Full-bleed warm field — a subtle breathing MeshGradient in the
+            // brand palette (holds still under Reduce Motion).
+            OnboardingBackground()
+                .opacity(handingOff ? 0 : 1)
 
             VStack(spacing: 0) {
                 // Skip — top-right, only on non-final pages
                 HStack {
                     Spacer()
                     if page < screens.count - 1 {
-                        Button("Skip") { onFinish(false) }
+                        Button("Skip") { finish(startPairing: false) }
                             .font(.system(.title3, design: .default).weight(.regular))
                             .foregroundStyle(Brand.inkSoft)
                             .padding(.trailing, Space.l)
@@ -46,10 +69,12 @@ struct OnboardingView: View {
                 }
                 .frame(height: 48)
 
-                // Swipeable page content
+                // Swipeable page content. Each page reveals its elements in a
+                // gentle stagger when it becomes the selected page (`isActive`),
+                // and replays when swiped back to.
                 TabView(selection: $page) {
                     ForEach(Array(screens.enumerated()), id: \.offset) { index, screen in
-                        OnboardingPage(screen: screen)
+                        OnboardingPage(screen: screen, isActive: page == index)
                             .tag(index)
                     }
                 }
@@ -63,17 +88,20 @@ struct OnboardingView: View {
 
                     Button {
                         if page < screens.count - 1 {
-                            withAnimation(.snappy) { page += 1 }
+                            withAnimation(Motion.pageAdvance) { page += 1 }
                         } else {
-                            onFinish(true)   // last screen → open pairing
+                            finish(startPairing: true)   // last screen → open pairing
                         }
                     } label: {
                         Text(page < screens.count - 1 ? "Next" : "Connect my inbox")
+                            // Cross-fade the label as it swaps on the last page
+                            // instead of a hard cut.
+                            .contentTransition(.opacity)
                     }
                     .buttonStyle(.crowlyPrimary)
 
                     if page == screens.count - 1 {
-                        Button("Look around first") { onFinish(false) }
+                        Button("Look around first") { finish(startPairing: false) }
                             .font(.callout)
                             .foregroundStyle(Brand.inkSoft)
                             .transition(.opacity)
@@ -81,8 +109,15 @@ struct OnboardingView: View {
                 }
                 .padding(.horizontal, Space.xl)
                 .padding(.bottom, Space.xl)
-                .animation(.snappy, value: page)
+                .animation(Motion.pageAdvance, value: page)
             }
+            // Hero hand-off: on finish the whole composition lifts, scales up a
+            // touch, and fades — reading as one continuous "lifting off into the
+            // app" motion before the parent cross-fades this cover away to
+            // reveal the inbox underneath. `anchor: .top` keeps the crow leading.
+            .scaleEffect(handingOff ? 1.06 : 1, anchor: .top)
+            .offset(y: handingOff ? -28 : 0)
+            .opacity(handingOff ? 0 : 1)
         }
     }
 }
@@ -91,6 +126,15 @@ struct OnboardingView: View {
 
 private struct OnboardingPage: View {
     let screen: OnboardingScreen
+    /// True when this is the selected page. Drives the staggered reveal — and,
+    /// because it flips back to false when the page leaves, the reveal replays
+    /// on return so swiping back and forth always feels alive.
+    let isActive: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Flips true a beat after the page becomes active, kicking off the reveal.
+    @State private var appeared = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -99,6 +143,7 @@ private struct OnboardingPage: View {
             // Hero: the crow art with ambient motion
             CrowAnimationView(kind: screen.crow)
                 .padding(.bottom, Space.xl)
+                .modifier(RevealModifier(index: 0, appeared: appeared, reduceMotion: reduceMotion))
 
             // Headline: large bold serif
             Text(screen.title)
@@ -108,10 +153,12 @@ private struct OnboardingPage: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Space.xl)
                 .padding(.bottom, Space.m)
+                .modifier(RevealModifier(index: 1, appeared: appeared, reduceMotion: reduceMotion))
 
             // Signature divider: ——●——
             CrowlyDivider(width: 132)
                 .padding(.bottom, Space.m)
+                .modifier(RevealModifier(index: 2, appeared: appeared, reduceMotion: reduceMotion))
 
             // Body: SF Pro, soft ink, centered, narrow column
             Text(screen.body)
@@ -121,10 +168,45 @@ private struct OnboardingPage: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(4)
                 .padding(.horizontal, Space.xl + Space.l)
+                .modifier(RevealModifier(index: 3, appeared: appeared, reduceMotion: reduceMotion))
 
             Spacer(minLength: Space.xxl)
         }
         .frame(maxWidth: .infinity)
+        // Kick the reveal when the page becomes active; reset when it leaves so
+        // returning to it replays the stagger. `initial: true` also fires for
+        // the first page on launch.
+        .onChange(of: isActive, initial: true) { _, nowActive in
+            appeared = nowActive
+        }
+    }
+}
+
+/// Staggered entrance for one onboarding element: fades + rises into place with
+/// a per-`index` delay. Reduce Motion drops the offset and the stagger, keeping
+/// only a plain cross-fade so the sequence stays accessible.
+private struct RevealModifier: ViewModifier {
+    let index: Int
+    let appeared: Bool
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(appeared ? 1 : 0)
+            .offset(y: reveal)
+            .animation(
+                reduceMotion
+                    ? .easeOut(duration: 0.2)
+                    : Motion.reveal.delay(appeared ? Motion.revealDelay(index) : 0),
+                value: appeared
+            )
+    }
+
+    /// The pre-reveal vertical offset — elements start a touch low and rise.
+    /// Held flat under Reduce Motion (cross-fade only).
+    private var reveal: CGFloat {
+        guard !reduceMotion else { return 0 }
+        return appeared ? 0 : 16
     }
 }
 

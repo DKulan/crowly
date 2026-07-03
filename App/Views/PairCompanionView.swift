@@ -76,6 +76,9 @@ struct PairCompanionView: View {
                         Label("Paired. Pulling your inbox…", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(Color.crowlySuccess)
                             .font(.callout)
+                            // A one-off bounce on the success glyph — the small
+                            // "it worked" beat as pairing lands.
+                            .symbolEffect(.bounce, value: status.isSuccess)
                             .listRowBackground(Color.crowlySurface)
                     }
                 }

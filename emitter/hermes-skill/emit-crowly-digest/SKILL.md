@@ -1,7 +1,22 @@
 ---
 name: emit-crowly-digest
-description: Send a recurring digest (AI news, weather, community update, briefing, reminder) to Daniel's Crowly inbox app. Use at the end of a scheduled/cron job when you have a summary he should read in Crowly. You write the content; the bundled helper stamps the id/timestamp/version and POSTs it to the companion.
-platforms: [linux]
+description: Send a recurring digest (AI news, weather, community update, briefing, reminder) to the user's Crowly inbox app. Use at the end of a scheduled/cron job when you have a summary they should read in Crowly. You write the content; the bundled helper stamps the id/timestamp/version and POSTs it to the companion.
+version: 1.0.0
+license: MIT
+platforms: [macos, linux]   # valid values: macos, linux, windows (per Hermes skills spec)
+metadata:
+  hermes:
+    tags: [Crowly, Digest, Notification, Self-hosting]
+    related_skills: [setup-crowly]
+required_environment_variables:
+  - name: CROWLY_COMPANION_URL
+    prompt: "Crowly companion URL (internal address the emitter POSTs to)"
+    help: "Docker: http://crowly-companion:8787 · bare process: http://127.0.0.1:8787 — NOT the public Funnel URL (that fails TLS from inside the tailnet)."
+    required_for: "posting digests to the companion"
+  - name: CROWLY_TOKEN
+    prompt: "Crowly pairing token"
+    help: "The same token the app paired with — setup-crowly minted it into the companion's .env."
+    required_for: "authenticating to the companion"
 ---
 
 # Emit a Crowly digest
@@ -16,21 +31,27 @@ Crowly is a **reader**: a digest is content he *reads*, not a prompt to act. No
 questions, no buttons, no callbacks. If you want him to do something, say so in
 the prose `bottom_line`/`summary` — he acts in whatever tool owns that workflow.
 
-## Setup (this deployment)
+## Setup
 
-The companion runs as a sibling container on the shared `crowly-net` Docker
-network. From inside Hermes it's reachable at **`http://crowly-companion:8787`**
-(plain HTTP, internal — never the public Tailscale Funnel URL, which fails the
-TLS check from inside the tailnet).
-
-The helper `crowly_emit.py` is bundled with this skill (`scripts/crowly_emit.py`,
-stdlib-only Python 3, no pip installs). It reads two values from the
-environment — already set in Hermes's `/opt/data/.env`:
+This skill needs two environment variables, declared in the frontmatter as
+`required_environment_variables` — so Hermes prompts for them on first load and
+passes them through to the sandbox automatically (`setup-crowly` sets them for
+you if you installed via that skill):
 
 ```
-CROWLY_COMPANION_URL=http://crowly-companion:8787
-CROWLY_TOKEN=<the companion's pairing token>
+CROWLY_COMPANION_URL   the INTERNAL companion address the emitter POSTs to
+CROWLY_TOKEN           the companion's pairing token
 ```
+
+**`CROWLY_COMPANION_URL` is the *internal* address, never the public Funnel URL:**
+`http://crowly-companion:8787` when the companion is a sibling container on the
+shared `crowly-net` Docker network, or `http://127.0.0.1:8787` when it runs as a
+bare process on the same host. The public Tailscale Funnel URL fails the TLS
+check from inside the tailnet — that URL is only for the phone.
+
+The helper `crowly_emit.py` is bundled with this skill
+(`${HERMES_SKILL_DIR}/scripts/crowly_emit.py`, stdlib-only Python 3, no pip
+installs) and reads those two vars from the environment.
 
 ## How to emit (the action)
 
@@ -86,12 +107,11 @@ Rules of thumb:
 2. **Pipe it to the helper** (the env vars are already in the environment):
 
    ```bash
-   echo "$content_json" | python3 ~/.../emit-crowly-digest/scripts/crowly_emit.py
+   echo "$content_json" | python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py
    ```
 
-   (Use the skill's actual installed path; in a cron `script` you can reference
-   it relative to the skills dir.) Or write to a file and pass
-   `--content-file digest.json`.
+   (`${HERMES_SKILL_DIR}` is substituted with this skill's absolute directory
+   when the skill loads.) Or write to a file and pass `--content-file digest.json`.
 
 3. **Check the exit code:**
    - `0` — posted. Done. (stdout shows `{"status":"stored"|"updated","id":...}`)
@@ -127,7 +147,7 @@ content='{
   ],
   "sources": [{"title": "Rocky View County", "url": "https://www.rockyview.ca/..."}]
 }'
-echo "$content" | python3 scripts/crowly_emit.py
+echo "$content" | python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py
 ```
 
 A *simple* digest can still use plain prose instead of `content`:
@@ -140,7 +160,7 @@ content='{
   "bottom_line": "Quiet week.",
   "summary": "Nothing notable this week. Next council meeting Aug 19."
 }'
-echo "$content" | python3 scripts/crowly_emit.py
+echo "$content" | python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py
 ```
 
 ## Before going live, dry-run
@@ -149,7 +169,7 @@ echo "$content" | python3 scripts/crowly_emit.py
 when wiring a new job to confirm the content validates:
 
 ```bash
-echo "$content" | python3 scripts/crowly_emit.py --dry-run
+echo "$content" | python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py --dry-run
 ```
 
 ## Notes

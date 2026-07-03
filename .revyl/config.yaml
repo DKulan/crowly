@@ -14,7 +14,6 @@ build:
             command: xcodebuild -project Crowly.xcodeproj -scheme 'Crowly' -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build
             output: build/Build/Products/Debug-iphonesimulator/*.app
             scheme: Crowly
-            app_id: 172aaa4e-7bd9-420a-88b6-de43a58edbf9
 defaults:
     open_browser: true
     timeout: 1800

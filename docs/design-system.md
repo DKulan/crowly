@@ -855,9 +855,35 @@ Combine the cell as one VoiceOver element via `.accessibilityElement(children: .
 
 44 × 44 pt everywhere. Achieved via `frame(minHeight: 44)` on each `Button`'s label and `.contentShape(Rectangle())` on small visual elements that need wider hit zones. In the widget the digest rows span the full row width (≥44pt high in medium/large), and the small widget's whole surface is the tap target — both clear the HIG floor.
 
-### 4.4 Reduce Motion
+### 4.4 Motion & Reduce Motion
 
-There are no decay animations in the reader — read state is a simple dot vanish. `.animation(reduceMotion ? nil : .snappy(duration: 0.20), value: isUnread)` is the only animated state transition in the cell. Archive uses the system's default `List` row-removal animation, which honors Reduce Motion automatically.
+#### 4.4.1 Motion vocabulary & the governing rule
+
+**Rich onboarding, calm everywhere else.** Crowly's motion philosophy is deliberately split (a design decision made with the owner, M2, branch `feat/onboarding-animations`):
+
+- The **first-run onboarding carousel** is the one *rich* surface — staged element reveals, a morphing page indicator, a breathing `MeshGradient` field, a layered `KeyframeAnimator` crow, and a hero hand-off into the inbox. Motion carries the brand personality there because it's the one screen whose job is to make an impression. (Full behavior in `ux.md` § Onboarding.)
+- The **reader — inbox, detail, widget — stays calm.** A dot vanish, a system row-removal, a widget timeline reload. No decorative motion, no custom transitions (§4.4.2). This is not an oversight; a reading queue earns trust by being quiet.
+
+Timing lives in **one place** — the `Motion` enum in `Shared/Theme/Tokens.swift` — the same way color/spacing/type do. Never scatter inline `.snappy(…)` / `.spring(…)` literals at call sites; point them at a named curve. The vocabulary:
+
+| Token | Curve | Used for |
+|---|---|---|
+| `Motion.pageAdvance` | `.snappy` | Crisp "something changed" — page advance, list updates |
+| `Motion.press` | `.snappy(0.15)` | Button press-dim / scale (`CrowlyPrimaryButtonStyle`) |
+| `Motion.settle` | `.snappy(0.25)` | A control settling — the page-indicator pill sliding between dots |
+| `Motion.reveal` | `.spring(0.55, 0.82)` | Onboarding element entrance (hero → headline → divider → body) |
+| `Motion.heroSettle` | `.spring(0.65, 0.9)` | The onboarding → inbox hero hand-off carry-through |
+| `Motion.ambient` | `.easeInOut(2.2).repeatForever` | The crow's continuous ambient loop — **only** ever used gated on Reduce Motion |
+| `Motion.stagger` / `Motion.revealDelay(_:)` | `0.08` s base | Per-element delay for a staggered reveal (element `n` at `n × stagger`) |
+
+The calm surfaces reuse `press` / `settle`; onboarding layers on `reveal` / `heroSettle` / `ambient` / `stagger`. Adding a *new* rich-motion surface outside onboarding is a design change — flag it, don't just reach for these tokens.
+
+#### 4.4.2 Reduce Motion
+
+The consistent gate is **`Motion.maybe(_:reduceMotion:)`**, which returns `nil` (no animation) when the user has Reduce Motion on — one idiom rather than per-site `reduceMotion ? nil : …` ternaries. The onboarding motion, the page indicator, and `CrowlyPrimaryButtonStyle` all route through it; any *new* Reduce-Motion-sensitive animation should too.
+
+- **Reader.** There are no decay animations — read state is a simple dot vanish, and Archive uses the system's default `List` row-removal (which honors Reduce Motion automatically); the undo toast slides on a `.snappy` transition. The reading queue is intentionally quiet.
+- **Onboarding, all held / reduced under Reduce Motion:** the layered crow is rendered at rest (no per-frame keyframes), the `MeshGradient` field is static, the page-indicator pill moves instantly (no morph), staged reveals collapse to a plain cross-fade (no offset, no stagger), and the hero hand-off is skipped (the parent's opacity cross-fade still runs, so the flow always completes). Rich onboarding never comes at accessibility's expense.
 
 ### 4.5 Light-locked (no dark inversion)
 
