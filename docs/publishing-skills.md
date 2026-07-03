@@ -64,6 +64,15 @@ hermes skills publish emitter/hermes-skill/setup-crowly       --to github --repo
 hermes skills publish emitter/hermes-skill/emit-crowly-digest --to github --repo DKulan/crowly
 ```
 
+Use the **path form**, not the bare skill name — the bare name can resolve to a
+previously-installed (stale) copy instead of the checkout.
+
+The publish step also needs **GitHub write auth** on the host running `hermes`
+(it pushes to `--repo`): either `gh auth login`, or `GITHUB_TOKEN` in the
+`~/.env` the CLI names in its error. Use a **fine-grained PAT scoped to the one
+repo, Contents: read+write** — it sits in a plaintext env file on that host, so
+give it nothing more.
+
 (If publishing to a dedicated skills repo instead of the monorepo, point
 `--repo` there and adjust the install identifiers below to match.)
 
@@ -95,6 +104,17 @@ built to pass it — this is *why* the design choices matter, not incidental:
 Trust tier: a first publish lands as **community** (non-dangerous findings can be
 `--force`'d; dangerous verdicts stay blocked). If a dangerous verdict fires,
 that's a real finding — fix it, don't force it.
+
+**The real v1.0.0 scan outcome (2026-07-03):** the first attempt hit
+**DANGEROUS** on two CRITICALs — a commented `curl … | sh` install example and a
+"persist `CROWLY_TOKEN` in `~/.hermes/.env`" instruction. Both were real
+findings and were fixed (package-manager install guidance; Hermes's own
+`required_environment_variables` secret flow), not forced. The re-scan verdict
+is **CAUTION** with ~18 findings — all inherent to what an installer skill *is*
+(list-argv `subprocess.run`, `127.0.0.1:8787` bind addresses, the systemd unit
+path, prose that mentions `sudo` for user-run steps). That residue is the
+expected steady state: publish with `--force`, and treat any **new** CRITICAL
+or a DANGEROUS verdict as a regression to fix.
 
 ## Step 4 — Re-publish on change
 
