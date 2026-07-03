@@ -52,8 +52,8 @@ user the two or three steps only they can do.
 ## What only the user can do (state these up front, don't try to automate)
 
 - **Install the Crowly app** (App Store / TestFlight tap).
-- **One tunnel auth click** — `sudo tailscale up` opens a login URL the user
-  must approve in a browser. You can run the command; they must click.
+- **One tunnel auth click** — `tailscale up` (run with admin privileges, Step 3)
+  opens a login URL the user must approve in a browser. They run it; they click.
 - **Scan the pairing QR** — the pairing token moves host → phone by the user
   scanning the QR you present. You can't write it into the phone's Keychain.
   This is a deliberate security boundary.
@@ -155,12 +155,19 @@ Notes per branch:
 Funnel is the default: one path that spans every topology, no domain, and TLS
 terminates on *this* node so no third party ever sees digest content.
 
+If the probe said tailscale is absent, install it via the host's package
+manager (`apt install tailscale`, `dnf install tailscale`, `brew install
+tailscale`) or per Tailscale's official docs — https://tailscale.com/download.
+Then the user brings it up and opens the funnel:
+
 ```bash
-# Install tailscale if the probe said it's absent, e.g.:
-#   curl -fsSL https://tailscale.com/install.sh | sh   (review before running)
-sudo tailscale up          # ← the user clicks the login URL this prints
-sudo tailscale funnel --bg 8787
+tailscale up               # ← the user clicks the login URL this prints (needs privileges)
+tailscale funnel --bg 8787 # expose the companion's local port over HTTPS
 ```
+
+(These commands need root/admin on most hosts — prefix with `sudo` where
+required. They're the user's call to run; you present them, you don't silently
+escalate.)
 
 `tailscale funnel status` prints the public URL, e.g.
 `https://<node>.<tailnet>.ts.net`. **That URL is the phone's address** — you'll
@@ -223,18 +230,17 @@ The companion is now reachable but empty. Wire up emission:
 
    (Or, if you'd rather not go through the hub, copy it from the checkout:
    `${CROWLY_REPO}/emitter/hermes-skill/emit-crowly-digest/`.)
-2. **Set its two env vars.** That skill declares `CROWLY_COMPANION_URL` and
-   `CROWLY_TOKEN` as `required_environment_variables`, so Hermes prompts for them
-   on first load and passes them into the sandbox automatically. Use the
-   **internal** address from Step 3 and the token from Step 4:
+2. **Provide its two values when Hermes asks.** `emit-crowly-digest` declares
+   `CROWLY_COMPANION_URL` and `CROWLY_TOKEN` as `required_environment_variables`,
+   so Hermes prompts for them on first load and stores/passes them itself — you
+   do **not** hand-edit any secrets file. Give it:
+   - `CROWLY_COMPANION_URL` — the **internal** companion address from Step 3
+     (`http://crowly-companion:8787` on the docker network, or
+     `http://127.0.0.1:8787` bare) — never the public Funnel URL.
+   - `CROWLY_TOKEN` — the pairing token from Step 4.
 
-   ```bash
-   CROWLY_COMPANION_URL=http://crowly-companion:8787   # docker; or http://127.0.0.1:8787 bare
-   CROWLY_TOKEN=<the same pairing token from Step 4>
-   ```
-
-   (Persist them wherever your agent reads env — e.g. `~/.hermes/.env` or the
-   compose `.env` — so cron runs pick them up.)
+   Hermes keeps the token in its own secret store and never exposes it to the
+   model; cron runs of the skill pick it up automatically.
 3. **Offer a starter cron** so the inbox is non-empty on first open — e.g. a
    daily morning briefing or a weekly community digest,
    `hermes cron create --skill emit-crowly-digest ...`, delivery = Crowly only

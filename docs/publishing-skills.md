@@ -31,19 +31,26 @@ the companion source itself at install-run time:
 - `hermes` CLI installed and authenticated to the account that will own the
   published skills.
 - The Crowly repo **public** on GitHub (`github.com/DKulan/crowly`) — the hub
-  install and `fetch_companion.py`'s clone both need public read.
+  install and `fetch_companion.py`'s clone both need public read. ✅ *(public as of 2026-07-03)*
 - A **release tag cut** on the repo (see the pin step below) — hub installs
-  should build a known commit, not a moving `main`.
+  should build a known commit, not a moving `main`. ✅ *(`v1.0.0` cut + set as latest release, 2026-07-03)*
 
-## Step 1 — Pin the ref (do this BEFORE publishing)
+## Step 1 — Pin the ref (do this BEFORE publishing) ✅ done for v1.0.0
 
-`fetch_companion.py` defaults to `DEFAULT_REF = "main"`. Before publishing, cut a
-release tag and make the skill install pin to it:
+Both the tag and the pin are in place for the first release:
 
-1. Tag the repo: `git tag v1.0.0 && git push origin v1.0.0`.
-2. In `emitter/hermes-skill/setup-crowly/scripts/fetch_companion.py`, set
-   `DEFAULT_REF = "v1.0.0"` (or ensure `SKILL.md`'s Step 0 passes
-   `--ref v1.0.0`, which it does). Keep the tag and the SKILL.md example in sync.
+1. Tag cut + pushed: `v1.0.0` → commit `e18eec9`, set as the latest release.
+2. `emitter/hermes-skill/setup-crowly/scripts/fetch_companion.py` now sets
+   `DEFAULT_REF = "v1.0.0"`, and `SKILL.md`'s Step 0 already passes
+   `--ref v1.0.0` — tag, script default, and SKILL.md example are in sync.
+
+   *(Note: this `DEFAULT_REF` edit landed just after the `v1.0.0` tag, so the
+   tag's own copy still reads `main`. Harmless — SKILL.md Step 0 passes
+   `--ref v1.0.0` explicitly, and the companion source at the tag is complete;
+   the fix rides in the next release. Don't move a published tag over it.)*
+
+For **future** releases, redo this step: cut the new tag, bump `DEFAULT_REF` +
+the SKILL.md `--ref` to match (see § Step 4).
 
 Why: the whole "pinned + reviewable" promise (`docs/onboarding.md` security rule)
 depends on a stranger's agent building a *specific* commit. An unpinned `main`
@@ -98,9 +105,10 @@ the git tag all pointing at the same release.
 
 ## Pre-publish checklist
 
-- [ ] Repo is public.
-- [ ] Release tag cut; `fetch_companion.py` `DEFAULT_REF` + SKILL.md `--ref` match it.
-- [ ] `security-reviewer` run over both skills (process gate, `docs/deployment-learnings.md`).
-- [ ] Both `SKILL.md` frontmatters valid (name, description ≤1024, `platforms: [macos, linux]`).
+- [x] Repo is public. *(2026-07-03)*
+- [x] Release tag cut; `fetch_companion.py` `DEFAULT_REF` + SKILL.md `--ref` match it. *(v1.0.0, 2026-07-03)*
+- [x] `security-reviewer` run over both skills (process gate, `docs/deployment-learnings.md`). *(2026-07-03; no P0, P2/P3 fixed)*
+- [x] Both `SKILL.md` frontmatters valid (name, description ≤1024, `platforms: [macos, linux]`).
+- [ ] `hermes skills publish` run for both skills; note the real install identifier.
 - [ ] `hermes chat --toolsets skills -q "use setup-crowly ..."` smoke-tested (the guide's Test-It step).
 - [ ] A real fresh-host dry-run done at least once (the Tier-2 test) before the public "just tell your agent" claim.

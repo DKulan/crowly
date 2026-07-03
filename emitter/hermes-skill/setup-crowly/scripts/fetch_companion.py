@@ -31,11 +31,11 @@ import sys
 # key configured. Override with --repo-url for a fork or a local mirror.
 REPO_URL = "https://github.com/DKulan/crowly.git"
 
-# The ref to check out. PIN THIS TO A RELEASE TAG before publishing to the
-# Skills Hub — the whole point of "pinned + reviewable" is that a stranger's
-# agent builds a known commit, not whatever HEAD happens to be. Until a release
-# is cut this defaults to "main"; the SKILL.md examples pass --ref v<x.y.z>.
-DEFAULT_REF = "main"
+# The ref to check out. Pinned to the current release tag so a stranger's agent
+# builds a known commit, not whatever HEAD happens to be — the whole point of
+# "pinned + reviewable". Bump this in lockstep with each new release tag (and the
+# --ref in SKILL.md Step 0); see docs/publishing-skills.md § Step 4.
+DEFAULT_REF = "v1.0.0"
 
 # Files that must exist after checkout for this to be a usable Crowly repo. If
 # they're missing, we cloned the wrong thing (or a partial tree) — fail loud
