@@ -63,7 +63,7 @@ When the caller supplies `content`, the helper validates it client-side (`crowly
 
 Lives in `emitter/`:
 
-- **`crowly_emit.py`** — single-file, stdlib-only Python helper. CLI **and** importable library. Builds the envelope, validates against the same required-field set as the app's decoder, POSTs to `/ingest`. `--dry-run` builds + validates + prints without posting. Exit codes: `0` ok, `2` validation error (fix the content/prompt), `3` transport error (network / non-2xx).
+- **`crowly_emit.py`** — single-file, stdlib-only Python helper. CLI **and** importable library. Builds the envelope, validates against the same required-field set as the app's decoder, POSTs to `/ingest`. `--dry-run` builds + validates + prints without posting. Exit codes: `0` ok, `2` validation error (fix the content/prompt), `3` transport error (network / non-2xx). The token is **env-only** (`CROWLY_TOKEN`) — there is deliberately no `--token` flag, so the secret never lands on an argv (`ps`/shell history); this also keeps the published skill clean in the Hermes security scan. Kept byte-identical with the copy bundled in `hermes-skill/emit-crowly-digest/scripts/`.
 - **`companion_stub.py`** — a **minimal test companion** (in-memory, no TLS) implementing `/ingest` + `/list` + `/summary`. Not the production companion; it exists to exercise the wire contract end-to-end on a dev box.
 - **`hermes-skill/`** — the Hermes skill wrapper: instructions + a `crowly-emit` recipe a Hermes cron uses to ship its output to Crowly.
 - **`sample_content.json`** — example caller content (what the LLM produces).

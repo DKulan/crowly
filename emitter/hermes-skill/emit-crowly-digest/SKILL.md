@@ -104,14 +104,16 @@ Rules of thumb:
 - Turn "three things happened…" prose into a **`list`**.
 - Use **`heading`** + `divider` to group when a digest covers multiple topics.
 
-2. **Pipe it to the helper** (the env vars are already in the environment):
+2. **Write the JSON to a file and hand it to the helper** (the env vars are
+   already in the environment):
 
    ```bash
-   echo "$content_json" | python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py
+   python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py --content-file digest.json
    ```
 
    (`${HERMES_SKILL_DIR}` is substituted with this skill's absolute directory
-   when the skill loads.) Or write to a file and pass `--content-file digest.json`.
+   when the skill loads.) The helper also accepts the JSON on stdin if you have
+   no scratch directory to write to.
 
 3. **Check the exit code:**
    - `0` — posted. Done. (stdout shows `{"status":"stored"|"updated","id":...}`)
@@ -122,8 +124,10 @@ Rules of thumb:
 
 ## Example
 
-```bash
-content='{
+Write `digest.json`:
+
+```json
+{
   "job_id": "harmony-weekly",
   "title": "Harmony Community — weekly digest",
   "urgency": "high",
@@ -146,21 +150,25 @@ content='{
     {"type": "paragraph", "text": "**Rec Society AGM** is Aug 12, 7pm at the community hall."}
   ],
   "sources": [{"title": "Rocky View County", "url": "https://www.rockyview.ca/..."}]
-}'
-echo "$content" | python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py
+}
+```
+
+then emit it:
+
+```bash
+python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py --content-file digest.json
 ```
 
 A *simple* digest can still use plain prose instead of `content`:
 
-```bash
-content='{
+```json
+{
   "job_id": "harmony-weekly",
   "title": "Harmony Community — weekly digest",
   "urgency": "low",
   "bottom_line": "Quiet week.",
   "summary": "Nothing notable this week. Next council meeting Aug 19."
-}'
-echo "$content" | python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py
+}
 ```
 
 ## Before going live, dry-run
@@ -169,7 +177,7 @@ echo "$content" | python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py
 when wiring a new job to confirm the content validates:
 
 ```bash
-echo "$content" | python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py --dry-run
+python3 ${HERMES_SKILL_DIR}/scripts/crowly_emit.py --content-file digest.json --dry-run
 ```
 
 ## Notes

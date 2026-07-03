@@ -128,6 +128,15 @@ or a DANGEROUS verdict as a regression to fix.
 publish proceeds anyway and opens the PR; the "BLOCKED" decision line applies
 to install-time gating, not to publishing.)*
 
+**`emit-crowly-digest`'s first scan (2026-07-03)** also hit DANGEROUS, on two
+patterns: `echo "$json" | python3 …` examples (reads as piping content into an
+interpreter — "obfuscation") and the `--token` argv flag ("exfiltration" — and
+a fair cop: argv is visible in `ps`). Fixed honestly, not forced: examples
+rewritten around `--content-file digest.json` (stdin still supported), and the
+token made env-only with the `--token` flag removed from `crowly_emit.py`
+(both copies, kept identical). Expected residue: MEDIUM network findings on
+the internal `127.0.0.1:8787` addresses.
+
 ## Step 4 — Re-publish on change
 
 Bump the skill `version:` in its `SKILL.md` frontmatter, cut a new repo tag if

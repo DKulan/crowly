@@ -16,16 +16,16 @@ app can't decode it, this helper rejects it before it ever leaves the box.
 
 Usage
 -----
-As a CLI, reading a "content" JSON object on stdin or from --content-file:
+As a CLI, reading a "content" JSON object from --content-file (or stdin):
 
-    echo '{"job_id":"harmony-weekly","title":"Harmony Digest",
-           "bottom_line":"Quiet week.","urgency":"low"}' \
-      | python3 crowly_emit.py --dry-run
+    python3 crowly_emit.py --content-file digest.json --dry-run
 
     python3 crowly_emit.py --content-file digest.json \
-        --url https://inbox.example.com --token "$CROWLY_TOKEN"
+        --url https://inbox.example.com
 
-Env fallbacks: CROWLY_COMPANION_URL, CROWLY_TOKEN.
+The companion URL comes from --url or CROWLY_COMPANION_URL. The token comes
+from the CROWLY_TOKEN env var ONLY — there is deliberately no --token flag,
+so the secret never appears on an argv (visible in `ps`/shell history).
 
 As a library (the Hermes skill imports this):
 
@@ -388,8 +388,6 @@ def main(argv: list[str] | None = None) -> int:
                         "(default: read from stdin)")
     parser.add_argument("--url", default=os.environ.get("CROWLY_COMPANION_URL", ""),
                         help="companion base URL (env: CROWLY_COMPANION_URL)")
-    parser.add_argument("--token", default=os.environ.get("CROWLY_TOKEN", ""),
-                        help="pairing/bearer token (env: CROWLY_TOKEN)")
     parser.add_argument("--source", help="override the 'source' field")
     parser.add_argument("--dry-run", action="store_true",
                         help="build + validate + print the payload; do not POST")
@@ -407,8 +405,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\ncrowly-emit: OK (dry run) — id={digest['id']}", file=sys.stderr)
         return 0
 
+    # The token is env-only by design — no --token flag, so the secret never
+    # lands on an argv (visible in `ps` and shell history).
     try:
-        resp = post_digest(digest, args.url, args.token)
+        resp = post_digest(digest, args.url, os.environ.get("CROWLY_TOKEN", ""))
     except EmitError as e:
         print(f"crowly-emit: transport error: {e}", file=sys.stderr)
         return 3
