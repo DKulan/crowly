@@ -28,18 +28,25 @@ struct DigestDetailView: View {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         Text("Bottom line")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.crowlyAccent)
                             .textCase(.uppercase)
                         Text(digest.bottomLine)
                             .font(.crowlyDetailCallout)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(Color.crowlyInk)
                     }
                     .padding(Space.l)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: Radius.surface, style: .continuous)
-                            .fill(Color.accentColor.opacity(0.08))
+                            .fill(Brand.orange.opacity(0.08))
                     )
+                    .overlay(alignment: .leading) {
+                        // Orange left accent bar
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(Color.crowlyAccent)
+                            .frame(width: 3)
+                            .padding(.vertical, Space.s)
+                    }
                 }
 
                 // Body. schema v2: if the digest carries structured `content`
@@ -57,7 +64,7 @@ struct DigestDetailView: View {
                     if let summary = digest.summary, !summary.isEmpty {
                         Text(summary)
                             .font(.body)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(Color.crowlyInk)
                     }
 
                     // Body sections.
@@ -65,8 +72,12 @@ struct DigestDetailView: View {
                         VStack(alignment: .leading, spacing: Space.l) {
                             ForEach(digest.sections) { s in
                                 VStack(alignment: .leading, spacing: Space.s) {
-                                    Text(s.heading).font(.crowlyCellTitle)
-                                    Text(s.body).font(.body)
+                                    Text(s.heading)
+                                        .font(.crowlySectionTitle)
+                                        .foregroundStyle(Color.crowlyInk)
+                                    Text(s.body)
+                                        .font(.body)
+                                        .foregroundStyle(Color.crowlyInk)
                                 }
                             }
                         }
@@ -76,9 +87,11 @@ struct DigestDetailView: View {
                 // Sources.
                 if !digest.sources.isEmpty {
                     VStack(alignment: .leading, spacing: Space.s) {
+                        CrowlyDivider()
+                            .padding(.bottom, Space.xs)
                         Text("Sources")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.crowlyInkSoft)
                             .textCase(.uppercase)
                         ForEach(digest.sources) { src in
                             Button {
@@ -88,7 +101,7 @@ struct DigestDetailView: View {
                                     .font(.callout)
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(.tint)
+                            .foregroundStyle(Color.crowlyAccent)
                         }
                     }
                 }

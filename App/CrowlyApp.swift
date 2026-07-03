@@ -11,6 +11,12 @@ struct CrowlyApp: App {
         WindowGroup {
             ContentView()
                 .environment(router)
+                // Brand identity is a fixed warm palette (cream field, ink
+                // text, orange accent) — it does not invert under dark mode.
+                // Lock the light appearance so system `.primary`/`.secondary`
+                // resolve to dark-on-cream, and tint everything brand orange.
+                .tint(Brand.orange)
+                .preferredColorScheme(.light)
                 .onOpenURL { url in
                     router.handle(url)
                 }

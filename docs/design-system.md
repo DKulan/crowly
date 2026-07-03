@@ -7,51 +7,57 @@ The implementation-ready visual design system for the Crowly M1 iOS app and `sys
 - **Deployment target: iOS 26.** Liquid Glass APIs (`.glassEffect()`, `GlassEffectContainer`, `.buttonStyle(.glass)`, `.buttonStyle(.glassProminent)`) are usable freely. Each API site that requires iOS 26 is flagged inline as `[iOS 26]` so M2 (potentially lower minimum) can `@available`-gate later. Do not add gates now.
 - **Demo Mode first.** Every component renders entirely from canned model values; nothing here depends on a live companion or network.
 - **The triad is the product:** (1) Inbox list cell, (2) Digest detail view, (3) `systemMedium` widget entry. Everything else exists to serve these three.
-- **Liquid Glass for chrome, not content.** Toolbars and the widget surface get glass; digest cards and detail body stay opaque so prose is legible against any wallpaper or beneath glass chrome.
+- **Fixed warm brand identity (2026-07-02 redesign).** Crowly ships a *fixed* visual identity sampled from the app icon / onboarding art — a cream field, ink-black serif display, and a single orange accent. The app is **light-locked** (`.preferredColorScheme(.light)` at the scene root); the identity does **not** invert under dark mode. This is a deliberate move away from adaptive system colors so the crow-on-cream look reads the same on every device.
+- **Liquid Glass for chrome, not the brand.** Toolbars still get system glass, but *primary* CTAs are the flat orange brand pill (`CrowlyPrimaryButtonStyle`), not `.buttonStyle(.glass)`. Digest cards and detail body stay opaque so prose is legible against any wallpaper or beneath glass chrome. Glass may still appear on minor chrome (e.g. the undo toast, demo-mode banner).
 
 ---
 
 ## 1. Design tokens
 
-### 1.1 Semantic colors
+### 1.1 Semantic colors — the fixed Brand palette
 
-Defined as `Color` extensions backed by an Asset Catalog with `light` and `dark` variants. Use the **semantic name** at the call site — never raw hex, never `Color(red:green:blue:)` outside the asset catalog. Hex values below are the canonical light/dark pairs; the asset catalog mirrors them.
+The identity is a **fixed, light-locked palette** sampled from the app icon and onboarding art. Literal sRGB values live in **one** place — the `Brand` enum in `Shared/Theme/Tokens.swift` — and the semantic `Color.crowly*` tokens are re-pointed at it so every call site inherits the identity for free. Use the **semantic name** at the call site; `Color(red:green:blue:)` is sanctioned *only* inside the `Brand` enum itself. There is no dark-mode variant table: the app runs at `.preferredColorScheme(.light)` and the identity is stable across devices.
 
-| Semantic name | Light | Dark | Where used |
+| Semantic name | Brand token | sRGB | Where used |
 |---|---|---|---|
-| `crowly.background` | `#F2F2F7` (systemGroupedBackground) | `#000000` | Inbox list backdrop, settings root |
-| `crowly.surface` | `#FFFFFF` | `#1C1C1E` (secondarySystemGroupedBackground) | Digest cell + detail card fills (opaque, by rule) |
-| `crowly.surface.elevated` | `#FFFFFF` | `#2C2C2E` | Bottom-bar buttons not on glass, sheets |
-| `crowly.label` | `#000000` (label) | `#FFFFFF` | Primary text |
-| `crowly.label.secondary` | `#3C3C43` @ 0.60 | `#EBEBF5` @ 0.60 | Timestamps, meta, sub-labels (== `Color.secondary`) |
-| `crowly.label.tertiary` | `#3C3C43` @ 0.30 | `#EBEBF5` @ 0.30 | Disabled glyphs, separators |
-| `crowly.separator` | `#3C3C43` @ 0.36 | `#54545899` | Hairlines |
-| `crowly.accent` | `#0A84FF` (systemBlue) | `#0A84FF` | Tint, unread-dot fill, link tint |
-| `crowly.warning` | `#FF9F0A` | `#FF9F0A` | High-urgency exclamation glyph |
-| `crowly.destructive` | `#FF3B30` | `#FF453A` | Urgent-urgency exclamation glyph |
-| `crowly.muted` | `#8E8E93` (systemGray) | `#8E8E93` | "Archive" swipe, archived-section section header |
+| `crowly.background` | `Brand.cream` | `#FEF8F1` | Inbox list backdrop, settings root — the cream field behind everything |
+| `crowly.groupedBackground` | `Brand.creamDeep` | `#F7F0E6` | Grouped-list backdrop; cards lift off it |
+| `crowly.surface` | `Brand.paper` | `#FFFDFA` | Digest cell + detail card fills (opaque, by rule) — warm near-white |
+| `crowly.surface.elevated` | `Brand.paper` | `#FFFDFA` | Sheets, bottom-bar buttons not on glass |
+| `crowly.ink` | `Brand.ink` | `#0B0F14` | The crow + primary text |
+| `crowly.inkSoft` | `Brand.inkSoft` | `#3A3630` | Body copy / meta — warm dark grey, not pure grey |
+| `crowly.inkFaint` | `Brand.inkFaint` | `#6B645A` | Captions, disabled glyphs, muted state |
+| `crowly.hairline` | `Brand.hairline` | `#D8CEBF` | Warm hairline borders, inactive page dots |
+| `crowly.accent` | `Brand.orange` | `#F5871F` | **The single accent** — CTAs, active page dot, links, unread dots, the signature divider |
+| `crowly.success` | `Color.green` | system | Success glyph (callout variant only) |
+| `crowly.destructive` | `Color.red` | system | Urgent-urgency glyph, `critical` callout |
+| `crowly.muted` | `Brand.inkFaint` | `#6B645A` | Archive swipe, archived-state status dot |
 
-> **Rule:** all foreground text on cards uses `Color.primary`/`.secondary` so Dynamic Type + Smart Invert + Increased Contrast inherit for free.
+The `AccentColor` asset is brand orange; the scene root applies `.tint(Brand.orange)` + `.preferredColorScheme(.light)` (`App/CrowlyApp.swift`), so `.accentColor`, `.tint`, and system control tints all resolve to orange app-wide.
+
+> **Rules:**
+> 1. Text on cards still uses `Color.primary` / `.secondary` where system semantics fit (Dynamic Type + Increased Contrast inherit). Where a call site needs the brand ink explicitly (warm-on-cream surfaces), use `Color.crowlyInk` / `Color.crowlyInkSoft` / `Color.crowlyInkFaint`.
+> 2. The light lock is a design decision, not a bug — do **not** re-introduce a dark palette or add an adaptive asset without reopening the identity discussion.
 
 #### 1.1.1 Urgency colors
 
-Maps `digest.urgency` → an accent used only on the cell's leading exclamation glyph (when high/urgent) and the widget's urgency rail. Body text never tints by urgency (legibility).
+Maps `digest.urgency` → an accent used only on the cell's leading exclamation glyph (when high/urgent) and the widget's urgency rail. Body text never tints by urgency (legibility). In the fixed palette both `normal` and `high` land on brand orange — the accent is already a warm alert color, so there's no separate "warning yellow." Urgent escalates to red.
 
 | `urgency` | Color | SF Symbol cue |
 |---|---|---|
-| `low` | `crowly.label.tertiary` (subtle) | none |
-| `normal` | `crowly.accent` | none |
-| `high` | `crowly.warning` | `exclamationmark` (small, leading the timestamp) |
-| `urgent` | `crowly.destructive` | `exclamationmark.2` |
+| `low` | `Brand.inkFaint` @ 0.6 (subtle) | none |
+| `normal` | `Brand.orange` (`.crowlyAccent`) | none |
+| `high` | `Brand.orange` (`.crowlyAccent`) | `exclamationmark` (small, leading the timestamp) |
+| `urgent` | `.crowlyDestructive` (red) | `exclamationmark.2` |
 
 ```swift
 extension Color {
     static func urgency(_ u: Urgency) -> Color {
         switch u {
-        case .low:    .secondary.opacity(0.5)
-        case .normal: .accentColor
-        case .high:   Color("crowly.warning")
-        case .urgent: Color("crowly.destructive")
+        case .low:    Brand.inkFaint.opacity(0.6)
+        case .normal: Brand.orange
+        case .high:   Brand.orange
+        case .urgent: .crowlyDestructive
         }
     }
 }
@@ -113,12 +119,12 @@ A v2 `callout` block (`schema.md` § 1.3) carries a `variant` that maps to a tin
 
 | `variant` | Color token | SF Symbol |
 |---|---|---|
-| `info` (default) | `crowly.accent` (`.accentColor`) | `info.circle.fill` |
-| `warning` | `crowly.warning` (orange) | `exclamationmark.triangle.fill` |
-| `success` | `crowly.success` (green) | `checkmark.circle.fill` |
-| `critical` | `crowly.destructive` (red) | `exclamationmark.octagon.fill` |
+| `info` (default) | `Brand.orange` (`.crowlyAccent`) | `info.circle.fill` |
+| `warning` | `Brand.orange` (same accent) | `exclamationmark.triangle.fill` |
+| `success` | `.crowlySuccess` (green) | `checkmark.circle.fill` |
+| `critical` | `.crowlyDestructive` (red) | `exclamationmark.octagon.fill` |
 
-Unknown/missing `variant` → `info` (tolerant default, per `schema.md` § 1.3).
+Under the fixed brand palette, `info` and `warning` both resolve to brand orange — the accent is already a warm alert color, and the SF Symbol (info circle vs. triangle) carries the distinction. `success` and `critical` still get their own tints because they mean semantically different things (positive confirmation vs. hard alert). Unknown/missing `variant` → `info` (tolerant default, per `schema.md` § 1.3).
 
 #### 1.1.4 Unread-dot states (two; never a badge stack)
 
@@ -126,33 +132,46 @@ Unknown/missing `variant` → `info` (tolerant default, per `schema.md` § 1.3).
 
 | State | Fill | Stroke | Diameter | Notes |
 |---|---|---|---|---|
-| `unread` | `.accentColor` filled | none | 10pt | Digest hasn't been opened |
+| `unread` | `Brand.orange` (via `.accentColor`) | none | 10pt | Digest hasn't been opened |
 | `read` | n/a | n/a | hidden | Dot is not rendered |
 
 (Archived digests live in their own section and don't render a dot at all — the section header *is* the state.)
 
-Per-urgency tinting layers on top: if `digest.urgency >= .high` and state is `unread`, the dot inherits `Color.urgency(digest.urgency)` instead of `.accentColor`. One signal, not two badges.
+Per-urgency tinting layers on top: if `digest.urgency >= .high` and state is `unread`, the dot inherits `Color.urgency(digest.urgency)` — which in the fixed palette means the dot stays orange for `high` and escalates to red for `urgent`. One signal, not two badges.
 
 ### 1.2 Typography
 
-Map every text role to a `Font.TextStyle` — never a fixed point size — so Dynamic Type scales the whole app for free.
+Map every text role to a `Font.TextStyle` — never a fixed point size, with a single exception below — so Dynamic Type scales the whole app for free. The redesign introduces a **serif display face** (`.serif` — New York, ships with iOS) for hero titles, cell titles, and section headings; body/UI copy stays SF Pro. Serif carries the brand personality without a licensed webfont.
 
-| Token | TextStyle | Weight | Used for |
-|---|---|---|---|
-| `title.large` | `.largeTitle` | `.bold` | Navigation title (large) on Inbox + Detail |
-| `title.section` | `.title2` | `.semibold` | Section headings in detail (from `sections[].heading`) |
-| `title.cell` | `.headline` | `.semibold` (default) | Digest cell title |
-| `body.lead` | `.body` | `.regular` | Cell `bottom_line`, detail summary/section bodies |
-| `body.callout` | `.callout` | `.regular` | Detail "Bottom line" callout block |
-| `meta` | `.footnote` | `.regular` | Cell timestamp, secondary meta |
-| `mono.id` | `.caption2.monospaced()` | `.regular` | Debug surfaces / Settings only — never in main flow |
+| Token | Face | TextStyle | Weight | Used for |
+|---|---|---|---|---|
+| `crowlyDisplay` | `.serif` | `.largeTitle` | `.bold` | Onboarding / hero titles |
+| `crowlyDisplayLarge` | `.serif` | 40 pt (fixed) | `.bold` | The 40pt serif hero on the first onboarding screen (the one place a fixed size is sanctioned — a deliberate typographic beat) |
+| `crowlyTitle` | `.serif` | `.title` | `.semibold` | Screen-level titles |
+| `crowlySectionTitle` | `.serif` | `.title3` | `.semibold` | Section headings in detail (from `sections[].heading`) |
+| `crowlyCellTitle` | `.serif` | `.headline` | (headline default) | Digest cell title |
+| `crowlyCellBody` | SF Pro | `.body` | `.regular` | Cell `bottom_line`, detail summary/section bodies |
+| `crowlyDetailCallout` | SF Pro | `.callout` | `.regular` | Detail "Bottom line" callout block |
+| `crowlyChip` | SF Pro | `.caption` | `.semibold` | Chips, pills, small labels |
+| `crowlyChipSmall` | SF Pro | `.caption2` | `.medium` | Widget meta, tightest chips |
+| `crowlyDetailQ` | SF Pro | `.body` | `.medium` | Emphasis body in detail |
+| meta | SF Pro | `.footnote` | `.regular` | Cell timestamp, secondary meta |
+| mono.id | SF Pro | `.caption2.monospaced()` | `.regular` | Debug surfaces / Settings only — never in main flow |
 
 ```swift
 extension Font {
-    static let crowlyCellTitle:    Font = .headline
+    // Display — serif carries the brand
+    static let crowlyDisplay:      Font = .system(.largeTitle, design: .serif).weight(.bold)
+    static let crowlyDisplayLarge: Font = .system(size: 40, weight: .bold, design: .serif)
+    static let crowlyTitle:        Font = .system(.title, design: .serif).weight(.semibold)
+    static let crowlySectionTitle: Font = .system(.title3, design: .serif).weight(.semibold)
+    static let crowlyCellTitle:    Font = .system(.headline, design: .serif)
+    // Body / UI — SF Pro
     static let crowlyCellBody:     Font = .body
     static let crowlyDetailCallout: Font = .callout
-    static let crowlySectionTitle: Font = .title2.weight(.semibold)
+    static let crowlyChip:         Font = .caption.weight(.semibold)
+    static let crowlyChipSmall:    Font = .caption2.weight(.medium)
+    static let crowlyDetailQ:      Font = .body.weight(.medium)
 }
 ```
 
@@ -176,35 +195,39 @@ Eight-pt-grid; same scale everywhere.
 | `radius.card` | 14 | Inbox cell card surround, callout block |
 | `radius.surface` | 18 | Sheet handles, detail callout |
 | `radius.widget.row` | 12 | Widget row backgrounds (where used) |
+| `radius.pill` | 28 | The full-width brand pill CTA (`CrowlyPrimaryButtonStyle`) — onboarding, pairing, primary detail actions |
 
 ```swift
 enum Space { static let xs:CGFloat=4, s:CGFloat=8, m:CGFloat=12,
                   l:CGFloat=16, xl:CGFloat=24, xxl:CGFloat=32 }
-enum Radius { static let card:CGFloat=14, surface:CGFloat=18, widgetRow:CGFloat=12 }
+enum Radius { static let card:CGFloat=14, surface:CGFloat=18,
+                   widgetRow:CGFloat=12, pill:CGFloat=28 }
 ```
 
 Minimum tap target: **44pt × 44pt** everywhere (HIG). Visual size may be smaller; `.contentShape(Rectangle())` extends the hit region.
 
-### 1.4 Liquid Glass usage rules
+### 1.4 Glass vs. brand pill — chrome hierarchy
 
-The product invariant: **glass = chrome; opaque = content.** Decision rules below; if a surface isn't on the table, default to opaque.
+The product invariant: **glass = system chrome; opaque = content; brand pill = primary action.** Decision rules below; if a surface isn't on the table, default to opaque.
 
 | Surface | Treatment | Why |
 |---|---|---|
 | Navigation bar | System default (glass) | Apple-native; no override |
 | Bottom toolbar (`.bottomBar`) | System default (glass) | Apple-native |
-| Detail "Archive" button | `.buttonStyle(.glassProminent)` `[iOS 26]` | The detail screen's one primary action |
-| Detail `⋯` menu | `.buttonStyle(.glass)` `[iOS 26]` | Secondary; lives next to Archive |
+| **Primary CTAs** (onboarding "Connect my inbox", pairing "Pair", QR-unavailable "Enter manually") | `.buttonStyle(.crowlyPrimary)` — flat orange pill, ink-on-orange label | The brand identity; replaces `.buttonStyle(.glass)` for the *primary* action so the identity is consistent app-wide |
+| Detail `⋯` menu | Plain `Menu` (system chrome) | Secondary; system-default is fine |
+| Undo toast, minor chrome overlays | `.glassEffect(.regular)` `[iOS 26]` is still allowed | Chrome that isn't the primary action |
 | Widget background | `.containerBackground(for: .widget) { Color.clear }` so system renders glass beneath | WidgetKit invariant |
-| Cell card | **Opaque** `crowly.surface` | Prose legibility; `bottom_line` reads against any wallpaper |
-| Detail body | **Opaque** `crowly.surface` callout | Same reason |
-| Detail "Bottom line" callout | Opaque tinted block — `.background(Color.accentColor.opacity(0.08), in: .rect(cornerRadius: Radius.surface))` | Visual emphasis without glass; legible |
+| Cell card | **Opaque** `Brand.paper` (`crowly.surface`) on `Brand.cream` field | Prose legibility; `bottom_line` reads against any wallpaper |
+| Detail body | **Opaque** `Brand.paper` | Same reason |
+| Detail "Bottom line" callout | Opaque tinted block — `Brand.orange @ 0.08` fill at `Radius.surface` | Visual emphasis without glass; legible |
 | Demo-mode banner | `.glassEffect(.regular.tint(.orange))` `[iOS 26]` in a Capsule | Chrome on top of inbox; tint signals "not real data" |
 
-**Two hard rules** (changing either is a design change):
+**Three hard rules** (changing any is a design change):
 
 1. **Never put `.glassEffect()` on a view that owns the main reading text** — cell title, `bottom_line`, summary, section body. Glass-behind-prose fails the legibility bar against busy wallpapers.
-2. **No widget buttons.** The widget is read-only; `Button(intent:)` is not used in any widget surface. (This is the reader-pivot's hardest constraint; rest of the design follows from it.)
+2. **Primary CTAs are the orange brand pill, not glass.** `.buttonStyle(.crowlyPrimary)` is the *only* primary CTA in the app. `.buttonStyle(.glass)` / `.glassProminent` are reserved for secondary/chrome, or removed outright in favor of the pill.
+3. **No widget buttons.** The widget is read-only; `Button(intent:)` is not used in any widget surface. (This is the reader-pivot's hardest constraint; rest of the design follows from it.)
 
 ---
 
@@ -317,6 +340,36 @@ struct UrgencyGlyph: View {
     }
 }
 ```
+
+### 2.3a `CrowlyDivider` — the signature mark
+
+**Purpose.** The onboarding art's signature mark: a short orange rule broken by a center dot — `——●——`. Reused under hero headlines (onboarding) and as a section rule (above "Sources" in digest detail). Small, deliberate, unmistakably Crowly; the visual equivalent of a comma in the brand's voice.
+
+**Props.**
+```swift
+struct CrowlyDivider: View {
+    var width: CGFloat = 132
+}
+```
+
+**Sketch.** Lives in `Shared/Theme/Tokens.swift`; two orange capsule lines flanking a 6pt orange dot, laid out in an `HStack(spacing: Space.s)`. Accessibility-hidden — it's decorative.
+
+### 2.3b `CrowlyPrimaryButtonStyle` — the brand pill CTA
+
+**Purpose.** The flat, full-width orange pill lifted from the onboarding screenshot. The **only** primary CTA style in the app; replaces `.buttonStyle(.glass)` / `.glassProminent` wherever the previous design used them for the primary action. Ink-on-orange label, subtle press-dim, honors Dynamic Type via `.body.weight(.semibold)`.
+
+**Usage.**
+```swift
+Button("Connect my inbox") { … }
+    .buttonStyle(.crowlyPrimary)
+```
+
+**Where it appears (as of 2026-07-02):** onboarding last-screen CTA, `PairCompanionView` "Pair", the QR-unavailable "Enter manually" fallback. Not on every button in the app — only *primary* CTAs; secondary actions stay plain, and minor chrome may still use glass.
+
+**Rules.**
+- One `.crowlyPrimary` per screen at most (it's a primary; a screen with two of them has an information-architecture problem).
+- Never on destructive actions — the pill is orange (brand), not red.
+- Never inside the widget (no buttons in the widget, period).
 
 ### 2.4 `DigestCell`
 
@@ -594,22 +647,16 @@ struct DigestDetailView: View {
         .navigationSubtitle(digest.subtitle)               // "Sun, Jun 29 · 7:00 PM · low"
         .toolbar {
             ToolbarItemGroup(placement: .bottomBar) {
+                Spacer()
                 Button {
                     store.archive(digest)
+                    dismiss()
                 } label: {
                     Label("Archive", systemImage: "tray.and.arrow.down")
                 }
-                .buttonStyle(.glassProminent)              // [iOS 26]
-
-                ToolbarSpacer(.flexible)
-
-                Menu {
-                    #if DEBUG
-                    Button("Open as JSON", systemImage: "curlybraces") { /* debug surface */ }
-                    #endif
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
+                // Plain system toolbar button — the toolbar itself is glass
+                // chrome. Archive is the *only* action on this screen, so it
+                // doesn't need a brand pill to compete with anything.
             }
         }
     }
@@ -812,13 +859,19 @@ Combine the cell as one VoiceOver element via `.accessibilityElement(children: .
 
 There are no decay animations in the reader — read state is a simple dot vanish. `.animation(reduceMotion ? nil : .snappy(duration: 0.20), value: isUnread)` is the only animated state transition in the cell. Archive uses the system's default `List` row-removal animation, which honors Reduce Motion automatically.
 
-### 4.5 Light / dark per screen
+### 4.5 Light-locked (no dark inversion)
 
-All semantic colors above ship light + dark variants in the asset catalog. Per-screen spot checks:
+**The app is light-locked by design.** `CrowlyApp.swift` applies `.preferredColorScheme(.light)` at the scene root, so the identity — cream field, ink text, orange accent — is the same on every device regardless of system appearance. There is no dark palette; there is no adaptive asset catalog. This is a deliberate identity decision (2026-07-02 redesign), not an omission.
 
-- **Inbox.** Background `crowly.background` (light `#F2F2F7` / dark `#000`); cell `crowly.surface` (light `#FFF` / dark `#1C1C1E`). Job stripe stays visible against either because the algorithm switches S/L by `colorScheme`.
-- **Detail.** Same surface tokens. Bottom-line callout uses `Color.accentColor.opacity(0.08)` — accent tint reads the same in both modes because opacity is low.
-- **Widget.** Background is **system-managed** (glass), so light/dark/Accented all flow from `Color.clear` containerBackground. Stripes get explicit accented-mode override (§3.3).
+Per-screen spot checks:
+
+- **Inbox.** Backdrop `Brand.cream` `#FEF8F1`; cell `Brand.paper` `#FFFDFA`. Job stripe stays visible because the FNV-1a algorithm's fixed S/L was picked for legibility on the cream field.
+- **Detail.** Same surface tokens. Bottom-line callout is `Brand.orange @ 0.08` on paper — a warm tinted band that reads as chrome, not text.
+- **Widget.** Background is **system-managed** (glass), so light/dark/Accented all flow from `Color.clear` containerBackground. The widget itself follows the brand: cream/paper rows, ink text, orange stripes. Stripes get an explicit accented-mode override (§3.3) — system tinting of arbitrary colors is unreliable for non-monochrome assets.
+
+**Widget note.** Because the widget lives on the user's home screen it *does* observe the system `colorScheme`, but its background is Clear-over-glass and its cell content uses the same fixed Brand palette; there is no separate dark styling to maintain.
+
+**Accessibility still works.** Light-locked isn't the same as inaccessible: Dynamic Type, VoiceOver, Increased Contrast, Reduce Motion all still function (they're orthogonal to color scheme). Smart Invert and Classic Invert will invert colors — that's an OS-level accessibility feature, and the app doesn't fight it. `.accessibilityIgnoresInvertColors()` is *not* applied globally, so users who need inversion get it from the system.
 
 ### 4.6 Increased Contrast
 
@@ -833,16 +886,20 @@ All semantic colors above ship light + dark variants in the asset catalog. Per-s
 
 ## Why this matches Apple docs (anchors for the coder's review)
 
-- Liquid Glass usage and the bottom-bar button styling follow Apple's *Implementing Liquid Glass Design in SwiftUI* (`.buttonStyle(.glass)` / `.glassProminent`, `.glassEffect()` reserved for the demo banner — not card content).
+- Liquid Glass is used for system chrome only (nav bar, bottom toolbar, demo banner via `.glassEffect(.regular.tint:)`); *primary* CTAs are the brand pill (`CrowlyPrimaryButtonStyle`) — a deliberate departure from `.buttonStyle(.glass)` for primary actions, per Apple's *Implementing Liquid Glass Design in SwiftUI* (custom button styles remain a first-class citizen).
 - Widget rendering modes, `widgetAccentable()`, and `.containerBackground(for: .widget) { Color.clear }` follow *Implementing Liquid Glass Design in Widgets* (Accented vs Full Color).
-- Bottom-bar action layout in detail follows *SwiftUI New Toolbar Features* (`ToolbarItemGroup(placement: .bottomBar)` + `ToolbarSpacer`).
+- Bottom-bar action layout in detail follows *SwiftUI New Toolbar Features* (`ToolbarItemGroup(placement: .bottomBar)`).
 - Read-only widgets with `Link` deeplinks follow the WidgetKit guidance for static-information widgets (in contrast to interactive `Button(intent:)` widgets, which are deliberately out of scope here).
+- `.preferredColorScheme(.light)` at the scene root is the sanctioned way to opt out of dark-mode adaptation, per SwiftUI's `preferredColorScheme` documentation.
 
 ## Pitfalls (read before building)
 
 - **Don't put `.glassEffect()` on the cell.** It will trash legibility against busy wallpapers and miss the invariant entirely. Cell = opaque, always.
+- **Don't reach for `Color(red:green:blue:)` at a call site.** Literal sRGB values live *only* in the `Brand` enum. Everywhere else uses semantic tokens (`Color.crowlyInk`, `.crowlyAccent`, `Brand.orange` when the code is inside `Shared/Theme/`).
+- **Don't re-introduce a dark palette or an adaptive asset catalog.** The light lock is a deliberate identity decision; changing it is a design change, not a refactor.
 - **Don't use `String.hashValue` for job color.** It's seeded per process; you'll get different colors after every relaunch. The FNV-1a implementation in §1.1.2 is non-negotiable.
 - **Don't gate `[iOS 26]` APIs now.** M1 target is iOS 26 — gates add noise. They go in for M2 when the public target may drop.
+- **Don't use `.buttonStyle(.glass)` / `.glassProminent` for a primary CTA.** The brand pill (`.buttonStyle(.crowlyPrimary)`) is the *only* primary style. Glass on primary actions was the pre-2026-07-02 look.
 - **Don't add buttons to the widget.** The widget is `Link`-only. Buttons in a reader widget invite the question "what does this do?" — and the answer should always be "open the app to read it."
 - **Don't add a third unread state.** "Snoozed", "muted-but-open", etc., are M2. Two states (unread / not-unread) keep the cell scannable.
 - **Don't reorder by urgency.** Urgency drives widget surfacing and the urgency glyph; the inbox is strictly chronological.

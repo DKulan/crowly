@@ -25,7 +25,7 @@ App Store name uniqueness ≠ trademark rights. Before any commercial launch, ru
 
 - Market and capitalize as **Crowly**.
 - The App Store name field is ≤30 chars and the home screen shows only ~the first 12 characters under the icon — so the bare word "Crowly" carries it; no qualifier needed.
-- The crow shows up as **animated onboarding art** (one beat per first-run screen, `docs/ux.md` § Onboarding). As of 2026-07-02 that art is a **SwiftUI placeholder** — the real Lottie `.lottie` crow assets aren't sourced yet, so no finished crow character has shipped.
+- The crow shows up as **onboarding hero art** (one shared image across the first-run screens, `docs/ux.md` § Onboarding). As of the 2026-07-02 redesign that art is the real thing — a transparent right-facing ink crow with orange/grey speed-lines, extracted from the app icon and bundled at `App/Assets.xcassets/crow.imageset`, rendered with a light code-driven bob. No third-party animation library.
 
 ## Alternatives considered & rejected
 

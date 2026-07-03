@@ -17,7 +17,7 @@ struct DigestCell: View {
                 HStack(alignment: .firstTextBaseline, spacing: Space.s) {
                     Text(digest.title)
                         .font(.crowlyCellTitle)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.crowlyInk)
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     StatusDot(state: state, urgency: digest.urgency)
@@ -34,14 +34,14 @@ struct DigestCell: View {
                     }
                     Text(digest.createdAt, format: .relative(presentation: .named))
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.crowlyInkSoft)
                 }
 
                 // Bottom line — the reason the digest exists.
                 if !digest.bottomLine.isEmpty {
                     Text(digest.bottomLine)
                         .font(.crowlyCellBody)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.crowlyInk)
                         .lineLimit(2)
                         .truncationMode(.tail)
                 }
@@ -52,6 +52,10 @@ struct DigestCell: View {
         .background(
             RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                 .fill(Color.crowlySurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                .strokeBorder(Color.crowlyHairline, lineWidth: 0.5)
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(a11yLabel)

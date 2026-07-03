@@ -80,7 +80,7 @@ struct QRPairScannerView: View {
             Text("This device can't scan a QR here. Enter your companion's URL and token by hand instead.")
         } actions: {
             Button("Enter manually") { dismiss() }
-                .buttonStyle(.glass)               // [iOS 26]
+                .buttonStyle(.crowlyPrimary)       // flat orange brand pill
         }
     }
 

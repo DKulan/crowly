@@ -187,9 +187,11 @@ struct CrowlyWidgetEntryView: View {
     private var header: some View {
         HStack(spacing: Space.s) {
             Image(systemName: "tray.full")
+                .foregroundStyle(Brand.ink)
                 .widgetAccentable()
             Text("Crowly")
-                .font(.caption.weight(.semibold))
+                .font(.system(.caption, design: .serif).weight(.semibold))
+                .foregroundStyle(Brand.ink)
             Spacer()
             if entry.unreadCount > 0 {
                 Text("\(entry.unreadCount) new")
@@ -197,7 +199,7 @@ struct CrowlyWidgetEntryView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, Space.s)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(.tint))
+                    .background(Capsule().fill(Brand.orange))
                     .widgetAccentable()
             }
         }
@@ -215,7 +217,7 @@ struct CrowlyWidgetEntryView: View {
                     Spacer()
                     Text("No digests yet.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Brand.inkSoft)
                     Spacer()
                 }
                 Spacer(minLength: 0)
@@ -229,7 +231,7 @@ struct CrowlyWidgetEntryView: View {
             }
         }
         .padding(Space.m)
-        .containerBackground(for: .widget) { Color.clear }
+        .containerBackground(for: .widget) { Brand.cream }
     }
 
     // MARK: - Large
@@ -247,7 +249,7 @@ struct CrowlyWidgetEntryView: View {
                     Spacer()
                     Text("No digests yet.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Brand.inkSoft)
                     Spacer()
                 }
                 Spacer(minLength: 0)
@@ -267,14 +269,14 @@ struct CrowlyWidgetEntryView: View {
                             Image(systemName: "arrow.right")
                         }
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Brand.inkSoft)
                         .widgetAccentable()
                     }
                 }
             }
         }
         .padding(Space.m)
-        .containerBackground(for: .widget) { Color.clear }
+        .containerBackground(for: .widget) { Brand.cream }
     }
 
     // MARK: - Small
@@ -287,20 +289,23 @@ struct CrowlyWidgetEntryView: View {
 
         return VStack(alignment: .leading, spacing: Space.s) {
             HStack {
-                Image(systemName: "tray.full").widgetAccentable()
+                Image(systemName: "tray.full")
+                    .foregroundStyle(Brand.orange)
+                    .widgetAccentable()
                 Spacer()
                 Text("\(entry.unreadCount)")
                     .font(.headline)
+                    .foregroundStyle(Brand.orange)
                     .widgetAccentable()
             }
             Spacer(minLength: 0)
             Text(entry.latestBottomLine ?? "No digests yet.")
                 .font(.subheadline)
                 .lineLimit(4)
-                .foregroundStyle(entry.latestBottomLine == nil ? .secondary : .primary)
+                .foregroundStyle(entry.latestBottomLine == nil ? Brand.inkSoft : Brand.ink)
         }
         .padding(Space.m)
-        .containerBackground(for: .widget) { Color.clear }
+        .containerBackground(for: .widget) { Brand.cream }
         .widgetURL(deeplink)
     }
 }
@@ -335,13 +340,13 @@ struct WidgetDigestRowView: View {
                         Text(row.title)
                             .font(.caption.weight(.semibold))
                             .lineLimit(1)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(Brand.ink)
                         Spacer(minLength: Space.xs)
                         // Relative age ("2h", "now") — freshness at a glance,
                         // right-aligned so titles still left-align cleanly.
                         Text(row.createdAt, format: .relative(presentation: .numeric, unitsStyle: .narrow))
                             .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Brand.inkFaint)
                             .lineLimit(1)
                             .layoutPriority(1)
                     }
@@ -349,7 +354,7 @@ struct WidgetDigestRowView: View {
                         .font(.caption2)
                         .lineLimit(2)
                         .minimumScaleFactor(0.9)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Brand.inkSoft)
                 }
 
                 Spacer(minLength: 0)

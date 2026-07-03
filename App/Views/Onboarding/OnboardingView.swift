@@ -10,8 +10,10 @@
 // zero-touch; the honest ceiling is "download app → ask your agent → one auth
 // click → scan one QR."
 //
-// Motion + tokens match the rest of the app (Space/Radius/Font, .snappy). The
-// crow art is a swappable placeholder (see CrowAnimationView).
+// Visuals match the fixed brand identity: full cream field, the ink crow hero
+// (CrowAnimationView), a serif headline, the ——●—— CrowlyDivider signature, a
+// custom orange-pill page indicator (OnboardingPageIndicator), and the flat
+// orange CTA (.buttonStyle(.crowlyPrimary)). Motion + tokens are shared.
 
 import SwiftUI
 
@@ -25,58 +27,63 @@ struct OnboardingView: View {
     private let screens = OnboardingScreen.all
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Skip — always available; lands the user in demo mode.
-            HStack {
-                Spacer()
-                if page < screens.count - 1 {
-                    Button("Skip") { onFinish(false) }
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .padding(.trailing, Space.l)
-                        .padding(.top, Space.s)
-                        .transition(.opacity)
-                }
-            }
-            .frame(height: 32)
+        ZStack {
+            // Full-bleed cream background
+            Brand.cream.ignoresSafeArea()
 
-            TabView(selection: $page) {
-                ForEach(Array(screens.enumerated()), id: \.offset) { index, screen in
-                    OnboardingPage(screen: screen)
-                        .tag(index)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .indexViewStyle(.page(backgroundDisplayMode: .always))
-
-            // CTA — advances through the deck, then hands off on the last page.
-            VStack(spacing: Space.m) {
-                Button {
+            VStack(spacing: 0) {
+                // Skip — top-right, only on non-final pages
+                HStack {
+                    Spacer()
                     if page < screens.count - 1 {
-                        withAnimation(.snappy) { page += 1 }
-                    } else {
-                        onFinish(true)   // last screen → open pairing
+                        Button("Skip") { onFinish(false) }
+                            .font(.system(.title3, design: .default).weight(.regular))
+                            .foregroundStyle(Brand.inkSoft)
+                            .padding(.trailing, Space.l)
+                            .padding(.top, Space.m)
+                            .transition(.opacity)
                     }
-                } label: {
-                    Text(page < screens.count - 1 ? "Next" : "Connect my inbox")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, Space.xs)
                 }
-                .buttonStyle(.glass)                 // [iOS 26]
+                .frame(height: 48)
 
-                if page == screens.count - 1 {
-                    Button("Look around first") { onFinish(false) }
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .transition(.opacity)
+                // Swipeable page content
+                TabView(selection: $page) {
+                    ForEach(Array(screens.enumerated()), id: \.offset) { index, screen in
+                        OnboardingPage(screen: screen)
+                            .tag(index)
+                    }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+
+                Spacer()
+
+                // Custom page indicator + CTA
+                VStack(spacing: Space.l) {
+                    OnboardingPageIndicator(currentPage: page, totalPages: screens.count)
+
+                    Button {
+                        if page < screens.count - 1 {
+                            withAnimation(.snappy) { page += 1 }
+                        } else {
+                            onFinish(true)   // last screen → open pairing
+                        }
+                    } label: {
+                        Text(page < screens.count - 1 ? "Next" : "Connect my inbox")
+                    }
+                    .buttonStyle(.crowlyPrimary)
+
+                    if page == screens.count - 1 {
+                        Button("Look around first") { onFinish(false) }
+                            .font(.callout)
+                            .foregroundStyle(Brand.inkSoft)
+                            .transition(.opacity)
+                    }
+                }
+                .padding(.horizontal, Space.xl)
+                .padding(.bottom, Space.xl)
+                .animation(.snappy, value: page)
             }
-            .padding(.horizontal, Space.xl)
-            .padding(.bottom, Space.xl)
-            .animation(.snappy, value: page)
         }
-        .background(Color.crowlyBackground)
     }
 }
 
@@ -86,20 +93,35 @@ private struct OnboardingPage: View {
     let screen: OnboardingScreen
 
     var body: some View {
-        VStack(spacing: Space.xl) {
+        VStack(spacing: 0) {
             Spacer(minLength: Space.l)
+
+            // Hero: the crow art with ambient motion
             CrowAnimationView(kind: screen.crow)
-            VStack(spacing: Space.m) {
-                Text(screen.title)
-                    .font(.largeTitle.weight(.bold))
-                    .multilineTextAlignment(.center)
-                Text(screen.body)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, Space.xl)
+                .padding(.bottom, Space.xl)
+
+            // Headline: large bold serif
+            Text(screen.title)
+                .font(.crowlyDisplayLarge)
+                .foregroundStyle(Brand.ink)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Space.xl)
+                .padding(.bottom, Space.m)
+
+            // Signature divider: ——●——
+            CrowlyDivider(width: 132)
+                .padding(.bottom, Space.m)
+
+            // Body: SF Pro, soft ink, centered, narrow column
+            Text(screen.body)
+                .font(.body)
+                .foregroundStyle(Brand.inkSoft)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+                .padding(.horizontal, Space.xl + Space.l)
+
             Spacer(minLength: Space.xxl)
         }
         .frame(maxWidth: .infinity)

@@ -59,7 +59,7 @@ xcodebuild -project Crowly.xcodeproj -scheme Crowly \
 
 Or use the `run-crowly` skill, which already wraps build + launch.
 
-On **first launch** the app now runs a 4-screen in-app onboarding carousel (M2 Phase 3b, 2026-07-02) that walks the user through the same shape this runbook covers — a self-hosted companion, the agent/emitter hookup, and pairing — before handing off to the pair sheet. "Skip"/"Look around first" drops straight into Demo Mode. (The carousel's crow art is a placeholder pending real Lottie assets; see `docs/ux.md` § Onboarding.)
+On **first launch** the app now runs a 4-screen in-app onboarding carousel (M2 Phase 3b, 2026-07-02) that walks the user through the same shape this runbook covers — a self-hosted companion, the agent/emitter hookup, and pairing — before handing off to the pair sheet. "Skip"/"Look around first" drops straight into Demo Mode. (The carousel uses the real crow art extracted from the app icon; the whole flow sits on the fixed warm brand palette from the 2026-07-02 redesign — see `docs/ux.md` § Onboarding and `docs/design-system.md`.)
 
 *Verify:* first launch shows the onboarding carousel; skipping (or on a subsequent launch) the app opens to **Demo Mode** with three canned digests of varying urgency (`docs/ux.md` § Onboarding).
 

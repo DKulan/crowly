@@ -21,13 +21,13 @@ struct ContentBlockView: View {
         case .paragraph(let text):
             Text(CrowlyMarkdown.attributed(text))
                 .font(.body)
-                .foregroundStyle(.primary)
+                .foregroundStyle(Color.crowlyInk)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
         case .heading(let text):
             Text(text)
-                .font(.crowlyCellTitle)
-                .foregroundStyle(.primary)
+                .font(.crowlySectionTitle)
+                .foregroundStyle(Color.crowlyInk)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // A little breathing room above a heading that follows prose.
                 .padding(.top, Space.xs)
@@ -52,7 +52,7 @@ struct ContentBlockView: View {
             if let text = raw.objectValue?["text"]?.stringValue, !text.isEmpty {
                 Text(CrowlyMarkdown.attributed(text))
                     .font(.body)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.crowlyInk)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -71,10 +71,10 @@ private struct ListBlock: View {
                 HStack(alignment: .firstTextBaseline, spacing: Space.s) {
                     Text(marker(for: index))
                         .font(.body.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.crowlyInkSoft)
                     Text(CrowlyMarkdown.attributed(item))
                         .font(.body)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.crowlyInk)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
@@ -106,11 +106,11 @@ private struct CalloutBlock: View {
                 if let title, !title.isEmpty {
                     Text(title)
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.crowlyInk)
                 }
                 Text(CrowlyMarkdown.attributed(text))
                     .font(.callout)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.crowlyInk)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -147,19 +147,23 @@ private struct MetricsBlock: View {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Text(metric.value)
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.crowlyInk)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     Text(metric.label)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.crowlyInkSoft)
                         .textCase(.uppercase)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Space.m)
                 .background(
                     RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                        .fill(Color.crowlySurfaceElevated)
+                        .fill(Color.crowlySurface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                        .strokeBorder(Color.crowlyHairline, lineWidth: 0.5)
                 )
             }
         }

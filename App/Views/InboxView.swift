@@ -43,13 +43,13 @@ struct InboxView: View {
                                 } label: {
                                     Label("Archive", systemImage: "tray.and.arrow.down")
                                 }
-                                .tint(.gray)
+                                .tint(Color.crowlyMuted)
                             }
                         }
                     } header: {
                         Text(section.title)
                             .font(.crowlyChip)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.crowlyInkSoft)
                             .textCase(nil)
                     }
                 }
@@ -197,13 +197,15 @@ private struct UndoArchiveToast: View {
     var body: some View {
         HStack(spacing: Space.s) {
             Image(systemName: "tray.and.arrow.down")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.crowlyInkSoft)
             Text("Archived")
                 .font(.subheadline)
+                .foregroundStyle(Color.crowlyInk)
             Spacer(minLength: 0)
             Button("Undo", action: onUndo)
                 .font(.subheadline.weight(.semibold))
-                .buttonStyle(.glass)               // [iOS 26]
+                .foregroundStyle(Color.crowlyAccent)
+                .buttonStyle(.plain)
         }
         .padding(.horizontal, Space.m)
         .padding(.vertical, Space.s)
@@ -211,7 +213,7 @@ private struct UndoArchiveToast: View {
             Capsule().fill(Color.crowlySurface)
         )
         .overlay(
-            Capsule().strokeBorder(.secondary.opacity(0.15), lineWidth: 0.5)
+            Capsule().strokeBorder(Color.crowlyHairline, lineWidth: 0.5)
         )
         .accessibilityElement(children: .combine)
     }
@@ -249,7 +251,7 @@ private struct SkeletonDigestRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: Space.m) {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(Color.secondary)
+                .fill(Color.crowlyInkFaint)
                 .frame(width: Space.xs, height: 44)
 
             VStack(alignment: .leading, spacing: Space.s) {
@@ -269,6 +271,10 @@ private struct SkeletonDigestRow: View {
         .background(
             RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                 .fill(Color.crowlySurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                .strokeBorder(Color.crowlyHairline, lineWidth: 0.5)
         )
     }
 }

@@ -2,7 +2,8 @@
 //
 // The onboarding UI itself isn't unit-testable headlessly, but its content
 // contract is: the deck exists, every screen has copy + a crow, and the crow
-// kinds map to stable Lottie asset names (so the future asset swap lines up).
+// kinds map to the shared `crow` art asset (2026-07-02 redesign — the four
+// per-kind images collapsed to one right-facing crow, matching the icon).
 
 import Testing
 import Foundation
@@ -30,14 +31,12 @@ import Foundation
     #expect(corpus.contains("pair"))
 }
 
-@Test func crowKindsMapToStableImageNames() {
-    // The crow image asset name is the art-swap contract; keep it derived from
-    // the raw value so a rename can't silently break the asset lookup.
-    #expect(CrowKind.welcome.imageName == "crow-welcome")
-    #expect(CrowKind.pair.imageName == "crow-pair")
+@Test func crowKindsMapToSharedCrowAsset() {
+    // Post-redesign: every kind renders the single bundled `crow` asset (the
+    // right-facing ink crow with orange speed lines, extracted from the icon).
+    // This is the art contract now — one shared image, not four per-kind names.
     for kind in CrowKind.allCases {
-        #expect(kind.imageName == "crow-\(kind.rawValue)")
+        #expect(kind.imageName == "crow")
         #expect(!kind.placeholderSymbol.isEmpty)
-        #expect(!kind.accentSymbol.isEmpty)
     }
 }

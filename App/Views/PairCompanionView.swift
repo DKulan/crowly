@@ -65,18 +65,18 @@ struct PairCompanionView: View {
                 if let message = status.errorMessage {
                     Section {
                         Label(message, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color.crowlyAccent)
                             .font(.callout)
-                            .listRowBackground(Color.crowlySurfaceElevated)
+                            .listRowBackground(Color.crowlySurface)
                     }
                 }
 
                 if status.isSuccess {
                     Section {
                         Label("Paired. Pulling your inbox…", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                            .foregroundStyle(Color.crowlySuccess)
                             .font(.callout)
-                            .listRowBackground(Color.crowlySurfaceElevated)
+                            .listRowBackground(Color.crowlySurface)
                     }
                 }
 
@@ -86,14 +86,14 @@ struct PairCompanionView: View {
                     } label: {
                         HStack(spacing: Space.s) {
                             if status.isValidating {
-                                ProgressView().controlSize(.small)
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(.white)
                             }
                             Text(status.isValidating ? "Validating…" : "Connect")
-                                .font(.body.weight(.semibold))
                         }
-                        .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.glass)             // [iOS 26]
+                    .buttonStyle(.crowlyPrimary)
                     .disabled(!canSubmit)
                     .listRowBackground(Color.clear)
                 }
@@ -135,10 +135,11 @@ struct PairCompanionView: View {
     private var explainer: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             Text("Point Crowly at your companion.")
-                .font(.headline)
+                .font(.crowlyTitle)
+                .foregroundStyle(Color.crowlyInk)
             Text("After `docker compose up`, your companion prints a pairing payload — paste its URL and token here.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.crowlyInkSoft)
         }
         .padding(.vertical, Space.xs)
     }

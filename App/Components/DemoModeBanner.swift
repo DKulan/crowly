@@ -7,23 +7,24 @@ struct DemoModeBanner: View {
     var body: some View {
         HStack(spacing: Space.s) {
             Image(systemName: "sparkles")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.crowlyAccent)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Demo Mode")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.crowlyInk)
                 Text("Showing canned digests. Connect a Crowly inbox to see real ones.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.crowlyInkSoft)
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Space.m)
         .padding(.vertical, Space.s)
         .background(
-            Capsule().fill(.orange.opacity(0.12))
+            Capsule().fill(Brand.orange.opacity(0.12))
         )
         .overlay(
-            Capsule().strokeBorder(.orange.opacity(0.25), lineWidth: 0.5)
+            Capsule().strokeBorder(Brand.orange.opacity(0.25), lineWidth: 0.5)
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Demo mode. Showing canned digests.")

@@ -28,7 +28,7 @@ struct StatusDot: View {
     private var unreadColor: Color {
         urgency == .high || urgency == .urgent
             ? Color.urgency(urgency)
-            : .accentColor
+            : Color.crowlyAccent
     }
 
     private var a11yLabel: String {
