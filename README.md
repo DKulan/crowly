@@ -34,7 +34,7 @@ Three parts — two run, one shipped:
 
 - **iOS app** (App Store) — list, detail, **home-screen widget** (pull/timeline-refresh), demo mode, QR pairing, Keychain.
 - **Companion service** (on each user's own host — a bare `python3 -m companion` process or a Docker bundle; Docker optional — on a VPS or a personal computer) — validates/stores digests and serves them (`GET /list`, `GET /summary`). Auto-HTTPS bundled; Tailscale Funnel is the cross-topology TLS default.
-- **Emitter kit** — a helper + Hermes skills that make any agent emit schema-valid digests (`emit-crowly-digest`), plus a `setup-crowly` skill that stands up the companion + wires emission across all three host topologies. Both skills are published to the **Hermes Skills Hub** — installable via `hermes skills install DKulan/setup-crowly` (and `DKulan/emit-crowly-digest`); see [`docs/publishing-skills.md`](docs/publishing-skills.md).
+- **Emitter kit** — a helper + Hermes skills that make any agent emit schema-valid digests (`emit-crowly-digest`), plus a `setup-crowly` skill that stands up the companion + wires emission across all three host topologies. Both skills are published to the **Hermes Skills Hub** — installable via `hermes skills install DKulan/crowly/skills/setup-crowly` (and `DKulan/crowly/skills/emit-crowly-digest`); see [`docs/publishing-skills.md`](docs/publishing-skills.md).
 
 See [`docs/architecture.md`](docs/architecture.md) for the full diagram and flow.
 

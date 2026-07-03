@@ -13,7 +13,7 @@ Then it dies in a Telegram scroll.
 
 Crowly is a clean iOS inbox for it. And you don't install it — your agent does:
 
-  hermes skills install DKulan/setup-crowly
+  hermes skills install DKulan/crowly/skills/setup-crowly --force
 
 then: "set up Crowly on this host."
 
@@ -44,7 +44,7 @@ The part that matters for you specifically:
 
 **you don't set it up. Your agent does.**
 
-    hermes skills install DKulan/setup-crowly
+    hermes skills install DKulan/crowly/skills/setup-crowly --force
 
 then just say: "set up Crowly on this host." It's a skill off the Hermes Skills
 Hub — security-scanned, pinned, reviewable.
@@ -79,7 +79,7 @@ The installer is a pinned, reviewable skill off the Skills Hub — Hermes
 security-scans it, and you can read the code before your agent runs it. No
 curl-pipe-to-shell mystery meat.
 
-  hermes skills install DKulan/setup-crowly
+  hermes skills install DKulan/crowly/skills/setup-crowly --force
 
 «link» — give your agents an inbox.
 
@@ -93,13 +93,11 @@ curl-pipe-to-shell mystery meat.
 
 <!--
 STATUS / HONESTY CHECK before posting (blockers, roughly in order):
-- `hermes skills install DKulan/setup-crowly` only works once the skills are
-  PUBLISHED to the hub (docs/publishing-skills.md) AND the repo is PUBLIC — both
-  the hub install and the skill's own companion-clone need public read. Neither
-  is done yet. Until then this command 404s; don't post it.
-- Pin the release tag first (docs/publishing-skills.md Step 1): fetch_companion.py
-  must default to a real tag, not `main`, or the "pinned, reviewable" claim in
-  tweet 7 is false.
+- ~~Skills published + repo public~~ ✅ DONE 2026-07-03 — both skills live on the
+  hub (PRs #1/#2), repo public, v1.0.0 tag pinned. Install command verified
+  format: `DKulan/crowly/skills/setup-crowly` + `--force` (community-tier CAUTION
+  block — docs/publishing-skills.md § Step 2). Still pending before posting:
+  the install smoke test + a fresh-host dry run.
 - The app is on TestFlight, not a public App Store listing yet (roadmap M2 §10).
   "install the app" implies a public download — wait for the listing, add a
   TestFlight join link, or frame as early-access/waitlist.

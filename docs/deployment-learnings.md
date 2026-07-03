@@ -165,7 +165,7 @@ a plain `restart` reruns stale code; (3) you MUST pass
 > **Distribution is Skills-Hub-based, not "clone + copy."** Both skills are
 > published to the Hermes Skills Hub (`hermes skills publish … --to github
 > --repo DKulan/crowly`) and installed with `hermes skills install
-> DKulan/setup-crowly` / `DKulan/emit-crowly-digest`; hub installs are
+> DKulan/crowly/skills/setup-crowly` / `DKulan/crowly/skills/emit-crowly-digest`; hub installs are
 > security-scanned by Hermes. A hub-published skill is only `SKILL.md` +
 > `scripts/` — it does *not* carry the companion service — so `setup-crowly` now
 > fetches the companion source itself via a **pinned clone** (`scripts/fetch_companion.py`

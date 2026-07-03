@@ -1,7 +1,7 @@
 # Publishing the Crowly skills to the Hermes Skills Hub
 
 How the two Crowly skills — `setup-crowly` and `emit-crowly-digest` — get onto
-the Hermes Skills Hub so a stranger can `hermes skills install DKulan/setup-crowly`
+the Hermes Skills Hub so a stranger can `hermes skills install DKulan/crowly/skills/setup-crowly`
 and their agent takes it from there. This is the M2 distribution path
 (`docs/roadmap.md` § M2 step 7); it replaces "clone the monorepo and copy the
 folder in."
@@ -83,12 +83,27 @@ byte-identical to the source folder) and merge as the personal account.
 (If publishing to a dedicated skills repo instead of the monorepo, point
 `--repo` there and adjust the install identifiers below to match.)
 
-Users then add the tap and install:
+Users then install (identifier format verified against the hermes-agent source,
+2026-07-03 — `tools/skills_hub.py::GitHubSkillSource.fetch` requires
+`owner/repo/path/to/skill-dir`; a two-part `owner/name` form does NOT resolve):
 
 ```bash
-hermes skills tap add DKulan/crowly           # optional — makes them searchable
-hermes skills install DKulan/setup-crowly
+hermes skills install DKulan/crowly/skills/setup-crowly --force
 ```
+
+or, after tapping, by short name:
+
+```bash
+hermes skills tap add DKulan/crowly           # makes them searchable + short-name installable
+hermes skills install setup-crowly --force
+```
+
+**`--force` is required, not optional.** The install policy matrix
+(`tools/skills_guard.py::INSTALL_POLICY`) *blocks* community-source skills at a
+CAUTION verdict — and CAUTION is these skills' honest steady state (see § Step 3).
+`--force` overrides non-dangerous blocks only; a DANGEROUS verdict stays
+uninstallable. Installers should read the findings and confirm they match the
+documented residue before forcing.
 
 ## Step 3 — Expect the security scan
 
@@ -120,8 +135,9 @@ findings and were fixed (package-manager install guidance; Hermes's own
 is **CAUTION** with ~18 findings — all inherent to what an installer skill *is*
 (list-argv `subprocess.run`, `127.0.0.1:8787` bind addresses, the systemd unit
 path, prose that mentions `sudo` for user-run steps). That residue is the
-expected steady state: publish with `--force`, and treat any **new** CRITICAL
-or a DANGEROUS verdict as a regression to fix.
+expected steady state: the publish PR opens on a CAUTION verdict, installs
+need `--force` (see § Step 2), and any **new** CRITICAL or a DANGEROUS verdict
+is a regression to fix.
 
 *(CLI nit: the scanner's "Use `--force` to override" hint is misleading —
 `hermes skills publish` has no `--force` flag. On a CAUTION verdict the
@@ -172,8 +188,9 @@ the git tag all pointing at the same release.
 - [x] `hermes skills publish` run for both skills. *(2026-07-03 — setup-crowly
   via PR #1, emit-crowly-digest via PR #2; both merged, published copies live
   under `skills/<name>/` and verified byte-identical to
-  `emitter/hermes-skill/<name>/`. Install identifiers `DKulan/setup-crowly` /
-  `DKulan/emit-crowly-digest` still to be confirmed by the install smoke test
-  below.)*
+  `emitter/hermes-skill/<name>/`. First smoke attempt failed on the assumed
+  two-part `DKulan/<skill>` identifier; correct format
+  `DKulan/crowly/skills/<name>` + `--force` verified from the hermes-agent
+  source — see § Step 2.)*
 - [ ] `hermes chat --toolsets skills -q "use setup-crowly ..."` smoke-tested (the guide's Test-It step).
 - [ ] A real fresh-host dry-run done at least once (the Tier-2 test) before the public "just tell your agent" claim.

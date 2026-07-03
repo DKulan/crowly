@@ -1,7 +1,7 @@
 ---
 name: setup-crowly
 description: Install and wire up Crowly on this host — stand up the companion service (the iOS app's backend), give it a public HTTPS address (Tailscale Funnel by default), present a pairing QR for the phone, and install the emit-crowly-digest skill so scheduled jobs can feed the inbox. Use when the user says they want to set up Crowly, connect Crowly to this agent, or "add Crowly support." Runs on the host where this agent lives.
-version: 1.0.0
+version: 1.0.1
 license: MIT
 platforms: [macos, linux]   # valid values: macos, linux, windows (per Hermes skills spec)
 metadata:
@@ -225,8 +225,15 @@ The companion is now reachable but empty. Wire up emission:
 1. **Install `emit-crowly-digest`** — the companion skill, also on the Skills Hub:
 
    ```bash
-   hermes skills install DKulan/emit-crowly-digest
+   hermes skills install DKulan/crowly/skills/emit-crowly-digest --force
    ```
+
+   `--force` is needed because community-tier skills are blocked at a CAUTION
+   scan verdict, and this skill's expected verdict *is* CAUTION (it reads its
+   declared `CROWLY_TOKEN` env var and mentions internal `127.0.0.1` addresses
+   — the residue is documented in the Crowly repo, `docs/publishing-skills.md`
+   § Step 3). Read the scan findings first; force only if they match that
+   residue — anything beyond it is a red flag, stop and tell the user.
 
    (Or, if you'd rather not go through the hub, copy it from the checkout:
    `${CROWLY_REPO}/emitter/hermes-skill/emit-crowly-digest/`.)

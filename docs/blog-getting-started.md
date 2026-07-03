@@ -65,7 +65,7 @@ Crowly ships an installer as a **Hermes skill** on the Skills Hub. Install it th
 way you install any skill:
 
 ```bash
-hermes skills install DKulan/setup-crowly
+hermes skills install DKulan/crowly/skills/setup-crowly --force
 ```
 
 It's pinned and reviewable — Hermes security-scans it on install, and you can
@@ -157,12 +157,11 @@ setup again — it's the same skill either way.
 <!--
 STATUS NOTE (remove before publishing, or keep as a "beta" banner):
 
-- `hermes skills install DKulan/setup-crowly` (Step 2) requires the skills to be
-  PUBLISHED to the hub (docs/publishing-skills.md) and the repo PUBLIC. Neither
-  done yet — the command 404s until then, and the skill's own companion-clone
-  also needs public read.
-- Pin the release tag first (docs/publishing-skills.md Step 1) so the "pinned"
-  claim in Step 2 is true (fetch_companion.py must default to a tag, not `main`).
+- ~~Skills published + repo public + tag pinned~~ ✅ DONE 2026-07-03 — both
+  skills live on the hub (PRs #1/#2), repo public, v1.0.0 pinned. Install
+  format verified: `DKulan/crowly/skills/setup-crowly` + `--force`
+  (community-tier CAUTION block — docs/publishing-skills.md § Step 2). Still
+  pending: install smoke test + fresh-host dry run.
 - The app is on TestFlight, not yet a public App Store listing (docs/roadmap.md
   § M2 step 10). Update Step 1 when the listing is live.
 - Repo URL in Step 2's "inspect from source" aside is «...» → github.com/DKulan/crowly
